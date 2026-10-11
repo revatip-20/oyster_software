@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -8,7 +9,6 @@ from db.database import get_db
 from models.raw_material import RawMaterial
 from routes.user import require_roles
 from schemas.raw_material_schema import RawMaterialCreate, RawMaterialRead, RawMaterialUpdate
-from sqlalchemy import select
 
 router = APIRouter(tags=["raw materials"])
 
@@ -39,7 +39,10 @@ def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db))
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Invalid supplier_id") from error
+        raise HTTPException(
+            status_code=409,
+            detail="Failed to save raw material",
+        ) from error
     db.refresh(new_material)
     return new_material
 
@@ -64,7 +67,7 @@ def edit_raw_material(
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if any(changes.get(field) is None for field in ("material_name", "unit", "quantity") if field in changes):
+    if any(changes.get(field) is None for field in ("material_name", "unit") if field in changes):
         raise HTTPException(status_code=422, detail="Required fields cannot be null")
 
     for field, value in changes.items():
@@ -74,7 +77,10 @@ def edit_raw_material(
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Invalid supplier_id") from error
+        raise HTTPException(
+            status_code=409,
+            detail="Failed to save raw material",
+        ) from error
     db.refresh(material)
     return material
 

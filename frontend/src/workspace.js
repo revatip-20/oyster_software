@@ -41,10 +41,12 @@ export const sections = {
     singular: "Employee",
     description: "View and manage employee records.",
     columns: [
+      ["code", "Code"],
       ["first_name", "First name"],
       ["last_name", "Last name"],
       ["email", "Email"],
       ["phone", "Phone"],
+      ["joining_date", "Joining date"],
       ["role", "Role"],
     ],
     fields: [
@@ -52,38 +54,33 @@ export const sections = {
       { name: "last_name", label: "Last name", required: true },
       { name: "email", label: "Email", type: "email", required: true },
       { name: "phone", label: "Phone", required: true },
+      { name: "joining_date", label: "Joining date", type: "date", required: true },
     ],
     updateFields: [
       { name: "first_name", label: "First name", required: true },
       { name: "last_name", label: "Last name", required: true },
       { name: "email", label: "Email", type: "email", required: true },
       { name: "phone", label: "Phone", required: true },
+      { name: "joining_date", label: "Joining date", type: "date" },
     ],
   },
   rawMaterials: {
     label: "Raw materials",
     singular: "Raw material",
-    description: "Track raw material details, quantities, and suppliers.",
+    description: "Manage raw material names and units.",
     columns: [
-      ["material_name", "Material"],
-      ["category", "Category"],
+      ["id", "ID"],
+      ["code", "Code"],
+      ["material_name", "Name"],
       ["unit", "Unit"],
-      ["quantity", "Quantity"],
-      ["supplier_id", "Supplier"],
     ],
     fields: [
       { name: "material_name", label: "Material name", required: true },
-      { name: "category", label: "Category" },
       { name: "unit", label: "Unit", required: true },
-      { name: "quantity", label: "Quantity", type: "number", min: "0", defaultValue: "0" },
-      { name: "supplier_id", label: "Supplier", type: "supplier" },
     ],
     updateFields: [
       { name: "material_name", label: "Material name", required: true },
-      { name: "category", label: "Category" },
       { name: "unit", label: "Unit", required: true },
-      { name: "quantity", label: "Quantity", type: "number", min: "0" },
-      { name: "supplier_id", label: "Supplier", type: "supplier" },
     ],
   },
   elements: {
@@ -91,28 +88,18 @@ export const sections = {
     singular: "Element",
     description: "View and manage elements and their related records.",
     columns: [
-      ["element_name", "Element"],
-      ["element_code", "Code"],
-      ["description", "Description"],
+      ["id", "ID"],
+      ["code", "Code"],
+      ["element_name", "Name"],
       ["unit", "Unit"],
-      ["supplier_id", "Supplier"],
-      ["raw_material_id", "Raw material"],
     ],
     fields: [
       { name: "element_name", label: "Element name", required: true },
-      { name: "element_code", label: "Element code", required: true },
-      { name: "description", label: "Description", wide: true },
       { name: "unit", label: "Unit" },
-      { name: "supplier_id", label: "Supplier", type: "supplier" },
-      { name: "raw_material_id", label: "Raw material", type: "rawMaterial" },
     ],
     updateFields: [
       { name: "element_name", label: "Element name", required: true },
-      { name: "element_code", label: "Element code", required: true },
-      { name: "description", label: "Description", wide: true },
       { name: "unit", label: "Unit" },
-      { name: "supplier_id", label: "Supplier", type: "supplier" },
-      { name: "raw_material_id", label: "Raw material", type: "rawMaterial" },
     ],
   },
   suppliers: {
@@ -120,6 +107,7 @@ export const sections = {
     singular: "Supplier",
     description: "Manage supplier contacts and business details.",
     columns: [
+      ["code", "Code"],
       ["company_name", "Company"],
       ["contact_person", "Contact person"],
       ["email", "Email"],
@@ -130,23 +118,23 @@ export const sections = {
     ],
     fields: [
       { name: "company_name", label: "Company name", required: true },
-      { name: "contact_person", label: "Contact person" },
-      { name: "email", label: "Email", type: "email" },
-      { name: "phone", label: "Phone" },
-      { name: "address", label: "Address", wide: true },
-      { name: "city", label: "City" },
-      { name: "state", label: "State" },
-      { name: "gst_number", label: "GST number" },
+      { name: "contact_person", label: "Contact person", required: true },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "phone", label: "Phone", required: true },
+      { name: "address", label: "Address", wide: true, required: true },
+      { name: "city", label: "City", required: true },
+      { name: "state", label: "State", required: true },
+      { name: "gst_number", label: "GST number", required: true },
     ],
     updateFields: [
       { name: "company_name", label: "Company name", required: true },
-      { name: "contact_person", label: "Contact person" },
-      { name: "email", label: "Email", type: "email" },
-      { name: "phone", label: "Phone" },
-      { name: "address", label: "Address", wide: true },
-      { name: "city", label: "City" },
-      { name: "state", label: "State" },
-      { name: "gst_number", label: "GST number" },
+      { name: "contact_person", label: "Contact person", required: true },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "phone", label: "Phone", required: true },
+      { name: "address", label: "Address", wide: true, required: true },
+      { name: "city", label: "City", required: true },
+      { name: "state", label: "State", required: true },
+      { name: "gst_number", label: "GST number", required: true },
     ],
   },
   customers: {
@@ -154,6 +142,7 @@ export const sections = {
     singular: "Customer",
     description: "Manage customer contacts and business details.",
     columns: [
+      ["code", "Code"],
       ["company_name", "Company"],
       ["contact_person", "Contact person"],
       ["email", "Email"],
@@ -163,23 +152,167 @@ export const sections = {
     ],
     fields: [
       { name: "company_name", label: "Company name", required: true },
-      { name: "contact_person", label: "Contact person" },
-      { name: "email", label: "Email", type: "email" },
-      { name: "phone", label: "Phone" },
-      { name: "address", label: "Address", wide: true },
-      { name: "city", label: "City" },
-      { name: "state", label: "State" },
+      { name: "contact_person", label: "Contact person", required: true },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "phone", label: "Phone", required: true },
+      { name: "address", label: "Address", wide: true, required: true },
+      { name: "city", label: "City", required: true },
+      { name: "state", label: "State", required: true },
     ],
     updateFields: [
       { name: "company_name", label: "Company name", required: true },
-      { name: "contact_person", label: "Contact person" },
-      { name: "email", label: "Email", type: "email" },
-      { name: "phone", label: "Phone" },
-      { name: "address", label: "Address", wide: true },
-      { name: "city", label: "City" },
-      { name: "state", label: "State" },
+      { name: "contact_person", label: "Contact person", required: true },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "phone", label: "Phone", required: true },
+      { name: "address", label: "Address", wide: true, required: true },
+      { name: "city", label: "City", required: true },
+      { name: "state", label: "State", required: true },
     ],
   },
+  
+dailyInputs: {
+  label: "Daily Inputs",
+  singular: "Daily Input",
+  description: "Record incoming element and raw material quantities.",
+
+  columns: [
+    ["id", "ID"],
+    ["DC_no", "DC No."],
+    ["DC_date", "DC Date"],
+    ["bill_no", "Bill No."],
+    ["bill_date", "Bill Date"],
+    ["quantity", "Quantity"],
+    ["type", "Type"],
+    ["raw_material_id", "Raw material"],
+    ["element_id", "Element"],
+    ["supplier_id", "Supplier"],
+    ["customer_id", "Customer"],
+  ],
+
+  fields: [
+    // Document fields: first row
+    { name: "DC_no", label: "DC No.", required: true, row: 1 },
+    { name: "DC_date", label: "DC Date", type: "date", required: true, row: 1 },
+    { name: "bill_no", label: "Bill No.", required: true, row: 1 },
+    { name: "bill_date", label: "Bill Date", type: "date", required: true, row: 1 },
+
+    { name: "quantity", label: "Quantity", type: "number", min: "1", step: "1", required: true },
+
+    {
+      name: "type",
+      label: "Type",
+      type: "select",
+      required: true,
+      options: [
+        { value: "raw_material", label: "Raw material" },
+        { value: "element", label: "Element" },
+      ],
+      defaultValue: "raw_material",
+    },
+
+    {
+      name: "raw_material_id",
+      label: "Raw material",
+      type: "rawMaterial",
+      dependsOnType: "raw_material",
+      required: true,
+    },
+
+    {
+      name: "element_id",
+      label: "Element",
+      type: "element",
+      dependsOnType: "element",
+      required: true,
+    },
+
+    {
+      name: "unit",
+      label: "Unit",
+      required: false,
+      readOnly: true,
+      restricted: true
+    },
+
+    {
+      name: "supplier_id",
+      label: "Supplier",
+      type: "supplier",
+      dependsOnType: ["raw_material", "element"],
+      required: (type) => type === "raw_material",
+    },
+
+    {
+      name: "customer_id",
+      label: "Customer",
+      type: "customer",
+      dependsOnType: "element",
+      required: false,
+    },
+  ],
+
+  updateFields: [
+    // Document fields: first row
+    { name: "DC_no", label: "DC No.", required: true, row: 1 },
+    { name: "DC_date", label: "DC Date", type: "date", required: true, row: 1 },
+    { name: "bill_no", label: "Bill No.", required: true, row: 1 },
+    { name: "bill_date", label: "Bill Date", type: "date", required: true, row: 1 },
+
+    { name: "quantity", label: "Quantity", type: "number", min: "1", step: "1", required: true },
+
+    {
+      name: "type",
+      label: "Type",
+      type: "select",
+      required: true,
+      options: [
+        { value: "raw_material", label: "Raw material" },
+        { value: "element", label: "Element" },
+      ],
+    },
+
+    {
+      name: "raw_material_id",
+      label: "Raw material",
+      type: "rawMaterial",
+      dependsOnType: "raw_material",
+      required: true,
+    },
+
+    {
+      name: "element_id",
+      label: "Element",
+      type: "element",
+      dependsOnType: "element",
+      required: true,
+    },
+
+    {
+      name: "unit",
+      label: "Unit",
+      required: false,
+      readOnly: true,
+      restricted: true
+    },
+
+    {
+      name: "supplier_id",
+      label: "Supplier",
+      type: "supplier",
+      dependsOnType: ["raw_material", "element"],
+      required: (type) => type === "raw_material",
+    },
+
+    {
+      name: "customer_id",
+      label: "Customer",
+      type: "customer",
+      dependsOnType: "element",
+      required: false,
+    },
+  ],
+},
+
 };
 
 export const navigation = [
@@ -190,5 +323,5 @@ export const navigation = [
   { id: "elements", label: "Elements", marker: "L" },
   { id: "suppliers", label: "Suppliers", marker: "S" },
   { id: "customers", label: "Customers", marker: "C" },
-  { id: "attendance", label: "Attendance", marker: "A", roles: ["admin", "supervisor"] },
+  { id: "dailyInputs", label: "Daily Inputs", marker: "I", roles: ["admin", "supervisor"] },
 ];

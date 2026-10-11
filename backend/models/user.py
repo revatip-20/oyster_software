@@ -1,12 +1,14 @@
-from sqlalchemy import Column, Date, DateTime, Integer, String, Text
+from sqlalchemy import Column, Date, DateTime, Integer, String, Text, UniqueConstraint
 
 from db.database import Base
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("code", name="uq_users_code"),)
 
     id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(80), nullable=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False, index=True)

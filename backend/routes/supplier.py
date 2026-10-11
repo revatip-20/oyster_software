@@ -55,8 +55,8 @@ def edit_supplier(supplier_id: int, update: SupplierUpdate, db: Session = Depend
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if "company_name" in changes and changes["company_name"] is None:
-        raise HTTPException(status_code=422, detail="company_name cannot be null")
+    if any(value is None for value in changes.values()):
+        raise HTTPException(status_code=422, detail="Supplier fields cannot be null")
 
     for field, value in changes.items():
         setattr(supplier, field, value)

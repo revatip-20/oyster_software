@@ -39,6 +39,7 @@ class EmployeeUpdate(UserDetailsUpdate):
 
 class UserRead(BaseModel):
     id: int
+    code: str | None = None
     first_name: str
     last_name: str
     email: EmailStr

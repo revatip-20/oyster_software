@@ -41,7 +41,7 @@ def add_element(element: ElementCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Element code already exists or a related supplier/material does not exist",
+            detail="Failed to save element",
         ) from error
     db.refresh(new_element)
     return new_element
@@ -63,7 +63,7 @@ def edit_element(element_id: int, update: ElementUpdate, db: Session = Depends(g
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if any(changes.get(field) is None for field in ("element_name", "element_code") if field in changes):
+    if "element_name" in changes and changes["element_name"] is None:
         raise HTTPException(status_code=422, detail="Required fields cannot be null")
 
     for field, value in changes.items():
@@ -75,7 +75,7 @@ def edit_element(element_id: int, update: ElementUpdate, db: Session = Depends(g
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Element code already exists or a related supplier/material does not exist",
+            detail="Failed to save element",
         ) from error
     db.refresh(element)
     return element

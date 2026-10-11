@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { navigation, sections } from "./workspace.js";
 
 function App() {
@@ -133,13 +133,54 @@ function Workspace({ user, onLogout }) {
   const [activeSection, setActiveSection] = useState("dashboard");
   const [requestVersion, setRequestVersion] = useState(0);
   const [records, setRecords] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const toggleRowSelection = (id) => {
+  setSelectedIds((prev) => {
+    const normalizedId = String(id);
+
+    return prev.some((selectedId) => String(selectedId) === normalizedId)
+      ? prev.filter((selectedId) => String(selectedId) !== normalizedId)
+      : [...prev, id];
+  });
+};
+
+const toggleSelectAll = (rows) => {
+  const visibleIds = rows.map((record) => record.id);
+
+  const allSelected =
+    visibleIds.length > 0 &&
+    visibleIds.every((id) =>
+      selectedIds.some((selectedId) => String(selectedId) === String(id))
+    );
+
+  setSelectedIds((prev) =>
+    allSelected
+      ? prev.filter(
+          (selectedId) =>
+            !visibleIds.some((id) => String(id) === String(selectedId))
+        )
+      : [
+          ...prev,
+          ...visibleIds.filter(
+            (id) =>
+              !prev.some((selectedId) => String(selectedId) === String(id))
+          ),
+        ]
+  );
+};
+
   const [lookupOptions, setLookupOptions] = useState({
     suppliers: [],
+    customers: [],
     rawMaterials: [],
+    elements: [],
   });
+  
   const [lookupLoading, setLookupLoading] = useState({
     suppliers: false,
+    customers: false,
     rawMaterials: false,
+    elements: false,
   });
   const [lookupErrors, setLookupErrors] = useState({});
   const [lookupRequestVersion, setLookupRequestVersion] = useState(0);
@@ -149,14 +190,60 @@ function Workspace({ user, onLogout }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
+  const [formType, setFormType] = useState("raw_material");
+  const [formValues, setFormValues] = useState({});
   const [pageError, setPageError] = useState("");
   const [notice, setNotice] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState([]);
+  const [filterField, setFilterField] = useState("");
+  const [filterValue, setFilterValue] = useState("");
+  const formRef = useRef(null);
+
+  function handleFormFieldChange(name, value) {
+    setFormValues((current) => {
+      const next = { ...current, [name]: value };
+      if (name === "type") {
+        setFormType(value);
+        if (value === "raw_material") {
+          next.element_id = "";
+          next.customer_id = "";
+        } else if (value === "element") {
+          next.raw_material_id = "";
+        } else if (!value) {
+          next.raw_material_id = "";
+          next.element_id = "";
+          next.supplier_id = "";
+          next.customer_id = "";
+        }
+      }
+      return next;
+    });
+  }
+
+  function handleClearForm() {
+    const currentFields = (editingRecord ? activeConfig.updateFields : activeConfig.fields) || [];
+    const emptyValues = {};
+    for (const field of currentFields) {
+      emptyValues[field.name] = "";
+    }
+    setFormValues(emptyValues);
+    setFormType("");
+    setPageError("");
+    setNotice("");
+  }
 
   function navigateToSection(section) {
     setActiveSection(section);
     setRequestVersion((version) => version + 1);
     setIsFormOpen(false);
     setEditingRecord(null);
+    setFormValues({});
+    setFormType("raw_material");
+    setSearchTerm("");
+    setFilters([]);
+    setFilterField("");
+    setFilterValue("");
   }
 
   useEffect(() => {
@@ -244,11 +331,9 @@ function Workspace({ user, onLogout }) {
   }, [activeSection, onLogout, requestVersion, user.role]);
 
   useEffect(() => {
-    const lookups = activeSection === "rawMaterials"
-      ? ["suppliers"]
-      : activeSection === "elements"
-        ? ["suppliers", "rawMaterials"]
-        : [];
+    const lookups = activeSection === "dailyInputs"
+      ? ["customers", "suppliers", "rawMaterials", "elements"]
+      : [];
     if (lookups.length === 0) return undefined;
     let isCurrent = true;
     setLookupLoading((current) => ({
@@ -314,73 +399,195 @@ function Workspace({ user, onLogout }) {
       isCurrent = false;
     };
   }, [activeSection, lookupRequestVersion, onLogout]);
+  
+async function submitForm(isAddMore = false) {
+  setPageError("");
+  setNotice("");
 
-  async function handleSave(event) {
-    event.preventDefault();
-    setPageError("");
-    setNotice("");
-    setIsSaving(true);
+  if (formRef.current && !formRef.current.reportValidity()) {
+    return;
+  }
 
-    const formData = new FormData(event.currentTarget);
-    const record = Object.fromEntries(formData.entries());
-    for (const [key, value] of Object.entries(record)) {
-      if (value === "") {
-        if (editingRecord) {
-          record[key] = null;
-        } else {
-          delete record[key];
-        }
-      } else if (["quantity", "supplier_id", "raw_material_id"].includes(key)) {
-        record[key] = Number(value);
-      }
-    }
+  setIsSaving(true);
 
-    try {
+  const record = {};
+
+  for (const [key, value] of Object.entries(formValues)) {
+    if (value === "" || value === null || value === undefined) {
       if (editingRecord) {
-        if (activeSection === "supervisors" && record.password === "") {
-          delete record.password;
-        }
-        for (const [key, value] of Object.entries(record)) {
-          const originalValue = editingRecord[key] ?? null;
-          if (value === originalValue || (value === "" && originalValue === null)) {
-            delete record[key];
-          }
-        }
-        if (Object.keys(record).length === 0) {
-          setNotice("No changes to save.");
-          setIsFormOpen(false);
-          setEditingRecord(null);
-          return;
-        }
+        record[key] = null;
       }
-
-      const result = editingRecord
-        ? await window.desktop.mutateWorkspaceRecord(
-            "update",
-            activeSection,
-            editingRecord.id,
-            record,
-          )
-        : await window.desktop.createWorkspaceRecord(activeSection, record);
-      if (!result.ok) {
-        setPageError(result.error);
-        if (result.sessionExpired) onLogout();
-        return;
-      }
-      setRecords((currentRecords) => editingRecord
-        ? currentRecords.map((item) => item.id === editingRecord.id ? result.data : item)
-        : [...currentRecords, result.data]);
-      setNotice(
-        `${sections[activeSection].singular} ${editingRecord ? "updated" : "added"} successfully.`,
-      );
-      setIsFormOpen(false);
-      setEditingRecord(null);
-    } catch {
-      setPageError("Unable to save this record. Please try again.");
-    } finally {
-      setIsSaving(false);
+    } else if (
+      [
+        "quantity",
+        "supplier_id",
+        "customer_id",
+        "raw_material_id",
+        "element_id",
+        "user_id",
+      ].includes(key)
+    ) {
+      record[key] = Number(value);
+    } else {
+      record[key] = value;
     }
   }
+
+  if (activeSection === "dailyInputs") {
+    // Exclude fields that the DailyInputCreate schema does not accept.
+    const allowedFields = [
+      "DC_no", "dc_no", "DC_date", "dc_date",
+      "bill_no", "bill_date", "item", "quantity",
+      "type", "customer_id", "supplier_id",
+      "raw_material_id", "element_id", "user_id",
+    ];
+
+    for (const key of Object.keys(record)) {
+      if (!allowedFields.includes(key)) {
+        delete record[key];
+      }
+    }
+
+    if (record.DC_no !== undefined) {
+      record.dc_no = record.DC_no;
+      delete record.DC_no;
+    }
+
+    if (record.DC_date !== undefined) {
+      record.dc_date = record.DC_date;
+      delete record.DC_date;
+    }
+
+    if (!record.user_id && user?.id) {
+      record.user_id = Number(user.id);
+    }
+
+    if (record.type === "raw_material") {
+      record.customer_id = null;
+      record.element_id = null;
+
+      const rm = lookupOptions.rawMaterials?.find(
+        (r) => String(r.id) === String(record.raw_material_id)
+      );
+      if (rm) record.item = rm.material_name;
+
+    } else if (record.type === "element") {
+      record.raw_material_id = null;
+
+      const el = lookupOptions.elements?.find(
+        (e) => String(e.id) === String(record.element_id)
+      );
+      if (el) record.item = el.element_name;
+    }
+
+    console.log("Daily Input request payload:", record);
+  }
+
+  try {
+    if (editingRecord) {
+      if (activeSection === "supervisors" && record.password === "") {
+        delete record.password;
+      }
+
+      for (const [key, value] of Object.entries(record)) {
+        const originalValue = editingRecord[key] ?? null;
+
+        if (
+          value === originalValue ||
+          (value === "" && originalValue === null)
+        ) {
+          delete record[key];
+        }
+      }
+
+      if (Object.keys(record).length === 0) {
+        setNotice("No changes to save.");
+        setIsFormOpen(false);
+        setEditingRecord(null);
+        setFormValues({});
+        return;
+      }
+    }
+
+    const result = editingRecord
+  ? await window.desktop.mutateWorkspaceRecord(
+      "update",
+      activeSection,
+      editingRecord.id,
+      record,
+    )
+  : await window.desktop.createWorkspaceRecord(
+      activeSection,
+      record,
+    );
+    
+    if (!result.ok) {
+      console.error("API save failed:", result);
+      setPageError(
+        typeof result.error === "string"
+          ? result.error
+          : JSON.stringify(result.error || result)
+      );
+
+      if (result.sessionExpired) onLogout();
+      return;
+    }
+
+    setRecords((currentRecords) =>
+      editingRecord
+        ? currentRecords.map((item) =>
+            item.id === editingRecord.id ? result.data : item
+          )
+        : [...currentRecords, result.data]
+    );
+
+    setDashboardCounts((current) => ({
+      ...current,
+      [activeSection]:
+        (current[activeSection] || 0) + (editingRecord ? 0 : 1),
+    }));
+
+    if (isAddMore) {
+      setNotice("Daily Input added successfully.");
+
+      setFormValues((prev) => ({
+        ...prev,
+        DC_no: prev.DC_no ?? "",
+        DC_date: prev.DC_date ?? "",
+        bill_no: prev.bill_no ?? "",
+        bill_date: prev.bill_date ?? "",
+        quantity: prev.quantity ?? "",
+        item: prev.item ?? "",
+        unit: "",
+        type: "",
+        customer_id: "",
+        supplier_id: "",
+        raw_material_id: "",
+        element_id: "",
+      }));
+
+      setFormType("");
+    } else {
+      setNotice(
+        `${sections[activeSection].singular} ${
+          editingRecord ? "updated" : "added"
+        } successfully.`
+      );
+
+      setIsFormOpen(false);
+      setEditingRecord(null);
+      setFormValues({});
+    }
+  } catch (error) {
+    console.error("Failed to save record:", error);
+    setPageError(
+      error?.message ||
+        "Unable to save this record. Check the console for details."
+    );
+  } finally {
+    setIsSaving(false);
+  }
+}
 
   async function handleDelete(record) {
     const label = record.company_name
@@ -398,7 +605,13 @@ function Workspace({ user, onLogout }) {
         record.id,
       );
       if (!result.ok) {
-        setPageError(result.error);
+        console.error("API save failed:", result);
+        setPageError(
+          typeof result.error === "string"
+            ? result.error
+            : JSON.stringify(result.error || result)
+        );
+
         if (result.sessionExpired) onLogout();
         return;
       }
@@ -410,16 +623,148 @@ function Workspace({ user, onLogout }) {
       setPageError("Unable to delete this record. Please try again.");
     }
   }
+  
+async function handleDeleteSelected() {
+  if (selectedIds.length === 0) return;
+
+  const confirmed = window.confirm(
+    `Remove ${selectedIds.length} selected record(s) from the active workspace?`
+  );
+
+  if (!confirmed) return;
+
+  const idsToDelete = [...selectedIds];
+
+  setPageError("");
+  setNotice("");
+
+  try {
+    const result = await window.desktop.mutateWorkspaceRecord(
+      "delete",
+      activeSection,
+      null,
+      null,
+      idsToDelete,
+    );
+
+    if (!result.ok) {
+      setPageError(
+        typeof result.error === "string"
+          ? result.error
+          : JSON.stringify(result.error || result)
+      );
+
+      if (result.sessionExpired) onLogout();
+      return;
+    }
+
+    setRecords((currentRecords) =>
+      currentRecords.filter(
+        (item) =>
+          !idsToDelete.some(
+            (id) => String(id) === String(item.id)
+          )
+      )
+    );
+
+    setSelectedIds([]);
+    setNotice(`${idsToDelete.length} record(s) removed successfully.`);
+  } catch (error) {
+    console.error("Bulk delete failed:", error);
+    setPageError("Unable to delete selected records. Please try again.");
+  }
+}
+
+  async function handleDownloadCsv() {
+    setPageError("");
+    setNotice("");
+
+    const columnLabels = activeConfig.columns.map(([, label]) => label);
+    const rows = filteredRecords.map((record) => activeConfig.columns.map(([key]) => {
+      const val = getRelatedCompanyName(key, record[key]) ?? record[key] ?? "";
+      if (typeof val === "string" && key.toLowerCase().includes("date") && val.includes("T")) {
+        return val.split("T")[0];
+      }
+      return val;
+    }));
+
+    try {
+      const result = await window.desktop.exportWorkspaceCsv(
+        activeSection,
+        columnLabels,
+        rows,
+      );
+      if (!result.ok) {
+        setPageError(result.error);
+        if (result.sessionExpired) onLogout();
+        return;
+      }
+      if (!result.canceled) {
+        const fileName = result.filePath.split(/[\\/]/).pop();
+        setNotice(`Exported ${result.count} records to ${fileName}.`);
+      }
+    } catch {
+      setPageError("Unable to export this table. Please try again.");
+    }
+  }
 
   const activeNavigation = availableNavigation.find(
     (item) => item.id === activeSection,
   );
   const activeConfig = sections[activeSection];
-  const activeLookups = activeSection === "rawMaterials"
-    ? ["suppliers"]
-    : activeSection === "elements"
-      ? ["suppliers", "rawMaterials"]
-      : [];
+  const activeColumns = activeConfig?.columns ?? [];
+  const availableFilterColumns = activeColumns.filter(
+    ([key]) => !filters.some((filter) => filter.field === key),
+  );
+  const selectedFilterField = filterField || availableFilterColumns[0]?.[0] || "";
+
+  function getRelatedCompanyName(key, value) {
+    if (key === "supplier_id" && value) {
+      return lookupOptions.suppliers?.find((supplier) => supplier.id === value)?.company_name;
+    }
+    if (key === "customer_id" && value) {
+      return lookupOptions.customers?.find((customer) => customer.id === value)?.company_name;
+    }
+    if (key === "raw_material_id" && value) {
+      return lookupOptions.rawMaterials?.find((material) => material.id === value)?.material_name;
+    }
+    if (key === "element_id" && value) {
+      return lookupOptions.elements?.find((element) => element.id === value)?.element_name;
+    }
+    if (key === "user_id" && value) {
+      if (user && user.id === value) {
+        return `${user.first_name} ${user.last_name}`.trim();
+      }
+      return `User #${value}`;
+    }
+    return undefined;
+  }
+
+  function getColumnSearchValues(record, key) {
+    const values = [record[key], getRelatedCompanyName(key, record[key])];
+    return values
+      .filter((value) => value !== null && value !== undefined)
+      .map((value) => String(value).toLocaleLowerCase());
+  }
+
+  const filteredRecords = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLocaleLowerCase();
+    return records.filter((record) => {
+      const matchesSearch = !normalizedSearch || [
+        String(record.id ?? ""),
+        ...activeColumns.flatMap(([key]) => getColumnSearchValues(record, key)),
+      ].some((value) => String(value).toLocaleLowerCase().includes(normalizedSearch));
+
+      return matchesSearch && filters.every((filter) =>
+        getColumnSearchValues(record, filter.field)
+          .some((value) => value.includes(filter.value.toLocaleLowerCase())),
+      );
+    });
+  }, [activeColumns, filters, lookupOptions, records, searchTerm]);
+
+  const activeLookups = activeSection === "dailyInputs"
+    ? ["customers", "suppliers", "rawMaterials", "elements"]
+    : [];
   const isLookupLoading = activeLookups.some((lookup) => lookupLoading[lookup]);
   const activeLookupError = activeLookups
     .map((lookup) => lookupErrors[lookup])
@@ -432,7 +777,6 @@ function Workspace({ user, onLogout }) {
           <div className="brand-mark sidebar-mark" aria-hidden="true">D</div>
           <div>
             <strong>Workspace</strong>
-            <span>Desktop app</span>
           </div>
         </div>
 
@@ -485,29 +829,15 @@ function Workspace({ user, onLogout }) {
         </header>
 
         <div className="page-content">
-          {activeSection === "attendance" ? (
-            <section aria-labelledby="page-title" className="section-page">
-              <div className="page-heading">
-                <div>
-                  <span className="eyebrow">WORKSPACE</span>
-                  <h1 id="page-title">Attendance</h1>
-                  <p>Attendance tracking for your team.</p>
-                </div>
-              </div>
-              <div className="table-card">
-                <p className="empty-state">
-                  Attendance APIs are not available in the backend yet.
-                </p>
-              </div>
-            </section>
-          ) : activeSection === "dashboard" ? (
+          {activeSection === "dashboard" ? (
             <Dashboard
               backendStatus={backendStatus}
               counts={dashboardCounts}
               isLoading={isLoading}
               onNavigate={navigateToSection}
               pageError={pageError}
-              sections={availableNavigation}
+              onRefresh={() => setRequestVersion((version) => version + 1)}
+              navigationItems={availableNavigation}
               user={user}
             />
           ) : (
@@ -523,12 +853,26 @@ function Workspace({ user, onLogout }) {
                   onClick={() => {
                     setPageError("");
                     setNotice("");
-                    setEditingRecord(null);
-                    setIsFormOpen((open) => !open);
+                    if (isFormOpen && !editingRecord) {
+                      setIsFormOpen(false);
+                      setEditingRecord(null);
+                      setFormValues({});
+                    } else {
+                      setEditingRecord(null);
+                      const initialType = activeSection === "dailyInputs" ? "raw_material" : "raw_material";
+                      setFormType(initialType);
+                      const initialValues = {};
+                      const fields = sections[activeSection]?.fields || [];
+                      for (const field of fields) {
+                        initialValues[field.name] = field.defaultValue ?? "";
+                      }
+                      setFormValues(initialValues);
+                      setIsFormOpen(true);
+                    }
                   }}
                   type="button"
                 >
-                  {isFormOpen ? "Cancel" : `+ Add ${activeConfig.singular}`}
+                  {isFormOpen && !editingRecord ? "Cancel" : `+ Add ${activeConfig.singular}`}
                 </button>
               </div>
 
@@ -539,7 +883,11 @@ function Workspace({ user, onLogout }) {
                 <form
                   className="record-form"
                   key={`${activeSection}-${editingRecord?.id ?? "new"}`}
-                  onSubmit={handleSave}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitForm(false);
+                  }}
+                  ref={formRef}
                 >
                   <div className="record-form-heading">
                     <h2>
@@ -552,96 +900,271 @@ function Workspace({ user, onLogout }) {
                         : "Enter the details below to add a record."}
                     </p>
                   </div>
+                  
                   <div className="form-fields">
-                    {(editingRecord
-                      ? activeConfig.updateFields
-                      : activeConfig.fields
-                    ).map((field) => {
-                      const lookupKey = field.type === "supplier"
-                        ? "suppliers"
-                        : field.type === "rawMaterial"
-                          ? "rawMaterials"
-                          : null;
-                      const lookupRecords = lookupKey
-                        ? lookupOptions[lookupKey]
-                        : [];
-                      const lookupError = lookupKey
-                        ? lookupErrors[lookupKey]
-                        : "";
-                      const isLookupBusy = lookupKey
-                        ? lookupLoading[lookupKey]
-                        : false;
-                      const optionName = field.type === "supplier"
-                        ? "company_name"
-                        : "material_name";
+                    {(() => {
+                      const fields = editingRecord
+                        ? activeConfig.updateFields
+                        : activeConfig.fields;
 
-                      return (
-                        <label
-                          className={field.wide ? "field-wide" : ""}
-                          htmlFor={`record-${field.name}`}
-                          key={field.name}
-                        >
-                          {field.label}{field.required ? " *" : ""}
-                          {lookupKey ? (
-                            <>
+                      // Group the four document fields into one row
+                      const documentFields = fields.filter(
+                        (field) => field.row === 1
+                      );
+
+                      // Keep all remaining fields in the normal layout
+                      const otherFields = fields.filter(
+                        (field) => field.row !== 1
+                      );
+
+                      const renderField = (field) => {
+                        const isFieldDisabled = Boolean(
+                          field.dependsOnType &&
+                            (Array.isArray(field.dependsOnType)
+                              ? !field.dependsOnType.includes(formType)
+                              : formType !== field.dependsOnType)
+                        );
+
+                        const isFieldRequired =
+                          typeof field.required === "function"
+                            ? field.required(formType)
+                            : Boolean(field.required);
+
+                        const lookupKey =
+                          field.type === "supplier"
+                            ? "suppliers"
+                            : field.type === "customer"
+                              ? "customers"
+                              : field.type === "rawMaterial"
+                                ? "rawMaterials"
+                                : field.type === "element"
+                                  ? "elements"
+                                  : null;
+
+                        const lookupRecords = lookupKey
+                          ? lookupOptions[lookupKey] || []
+                          : [];
+
+                        const lookupError = lookupKey
+                          ? lookupErrors[lookupKey]
+                          : "";
+
+                        const isLookupBusy = lookupKey
+                          ? lookupLoading[lookupKey]
+                          : false;
+
+                        const optionName =
+                          field.type === "rawMaterial"
+                            ? "material_name"
+                            : field.type === "element"
+                              ? "element_name"
+                              : "company_name";
+
+                        const optionValue = "id";
+
+                        return (
+                          <label
+                            className={[
+                              field.wide ? "field-wide" : "",
+                              isFieldDisabled ? "field-disabled" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            htmlFor={`record-${field.name}`}
+                            key={field.name}
+                          >
+                            {field.label}
+                            {isFieldRequired && !isFieldDisabled ? " *" : ""}
+
+                            {lookupKey ? (
+                              <>
+                                <select
+                                  disabled={
+                                    isFieldDisabled ||
+                                    isLookupBusy ||
+                                    Boolean(lookupError)
+                                  }
+                                  id={`record-${field.name}`}
+                                  name={field.name}
+                                  
+                                    onChange={(event) => {
+                                      const selectedId = event.target.value;
+
+                                      handleFormFieldChange(field.name, selectedId);
+
+                                      if (
+                                        field.type === "rawMaterial" ||
+                                        field.type === "element"
+                                      ) {
+                                        const selectedRecord = lookupRecords.find(
+                                          (record) =>
+                                            String(record.id) === String(selectedId)
+                                        );
+
+                                        handleFormFieldChange(
+                                          "unit",
+                                          selectedRecord?.unit ?? ""
+                                        );
+                                      }
+                                    }}
+                                  required={!isFieldDisabled && isFieldRequired}
+                                  value={
+                                    isFieldDisabled
+                                      ? ""
+                                      : formValues[field.name] ?? ""
+                                  }
+                                >
+                                  <option value="">
+                                    {isFieldDisabled
+                                      ? `Not applicable for ${
+                                          formType === "raw_material"
+                                            ? "raw material"
+                                            : formType === "element"
+                                              ? "element"
+                                              : "selected type"
+                                        }`
+                                      : isLookupBusy
+                                        ? `Loading ${
+                                            sections[lookupKey]?.label.toLowerCase() ||
+                                            lookupKey
+                                          }…`
+                                        : lookupRecords.length === 0
+                                          ? `No ${
+                                              sections[lookupKey]?.label.toLowerCase() ||
+                                              lookupKey
+                                            } available`
+                                          : `Select ${field.label.toLowerCase()}`}
+                                  </option>
+
+                                 
+                                    {!isFieldDisabled &&
+                                      lookupRecords.map((lookupRecord) => (
+                                        <option
+                                          key={lookupRecord.id}
+                                          value={lookupRecord[optionValue]}
+                                        >
+                                          {lookupRecord[optionName]}
+                                          {lookupRecord.unit
+                                            ? ` (${lookupRecord.unit})`   
+                                            : ""}
+                                        </option>
+                                      ))}
+                                </select>
+
+                                {lookupError && !isFieldDisabled && (
+                                  <span className="field-error" role="alert">
+                                    {lookupError}{" "}
+                                    <button
+                                      className="inline-retry"
+                                      onClick={() =>
+                                        setLookupRequestVersion(
+                                          (version) => version + 1
+                                        )
+                                      }
+                                      type="button"
+                                    >
+                                      Retry
+                                    </button>
+                                  </span>
+                                )}
+                              </>
+                            ) : field.readOnly ? (
+                              <div className="readonly-field-wrapper">
+                                <input
+                                  id={`record-${field.name}`}
+                                  name={field.name}
+                                  type="text"
+                                  value={formValues[field.name] ?? ""}
+                                  readOnly
+                                  aria-readonly="true"
+                                />
+
+                                {field.restricted && (
+                                  <span
+                                    className="restricted-mark"
+                                    title="This field cannot be edited"
+                                    aria-label="Restricted field"
+                                  >
+                                  </span>
+                                )}
+                              </div>
+                            ) : field.type === "select" ? (
                               <select
-                                defaultValue={editingRecord?.[field.name] ?? ""}
-                                disabled={isLookupBusy || Boolean(lookupError)}
                                 id={`record-${field.name}`}
                                 name={field.name}
+                                onChange={(event) =>
+                                  handleFormFieldChange(
+                                    field.name,
+                                    event.target.value
+                                  )
+                                }
+                                required={!isFieldDisabled && isFieldRequired}
+                                disabled={isFieldDisabled}
+                                value={formValues[field.name] ?? ""}
                               >
                                 <option value="">
-                                  {isLookupBusy
-                                    ? `Loading ${sections[lookupKey].label.toLowerCase()}…`
-                                    : lookupRecords.length === 0
-                                      ? `No ${sections[lookupKey].label.toLowerCase()} available`
-                                      : `No ${field.label.toLowerCase()}`}
+                                  Select {field.label.toLowerCase()}
                                 </option>
-                                {lookupRecords.map((lookupRecord) => (
-                                  <option key={lookupRecord.id} value={lookupRecord.id}>
-                                    {lookupRecord[optionName]}
+
+                                {field.options.map((option) => (
+                                  <option
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
                                   </option>
                                 ))}
                               </select>
-                              {lookupError && (
-                                <span className="field-error" role="alert">
-                                  {lookupError}{" "}
-                                  <button
-                                    className="inline-retry"
-                                    onClick={() => setLookupRequestVersion((version) => version + 1)}
-                                    type="button"
-                                  >
-                                    Retry
-                                  </button>
-                                </span>
-                              )}
-                            </>
-                          ) : field.wide ? (
-                            <textarea
-                              id={`record-${field.name}`}
-                              name={field.name}
-                              defaultValue={editingRecord?.[field.name] ?? ""}
-                              required={field.required}
-                              rows="3"
-                            />
-                          ) : (
-                            <input
-                              defaultValue={editingRecord
-                                ? field.name === "password"
-                                  ? ""
-                                  : editingRecord[field.name] ?? ""
-                                : field.defaultValue}
-                              id={`record-${field.name}`}
-                              minLength={field.minLength}
-                              min={field.min}
-                              name={field.name}
-                              required={field.required}
-                              type={field.type || "text"}
-                            />
+                            ) : field.wide ? (
+                              <textarea
+                                id={`record-${field.name}`}
+                                name={field.name}
+                                onChange={(event) =>
+                                  handleFormFieldChange(
+                                    field.name,
+                                    event.target.value
+                                  )
+                                }
+                                required={!isFieldDisabled && isFieldRequired}
+                                disabled={isFieldDisabled}
+                                rows="3"
+                                value={formValues[field.name] ?? ""}
+                              />
+                            ) : (
+                              <input
+                                id={`record-${field.name}`}
+                                minLength={field.minLength}
+                                min={field.min}
+                                step={field.step}
+                                name={field.name}
+                                onChange={(event) =>
+                                  handleFormFieldChange(
+                                    field.name,
+                                    event.target.value
+                                  )
+                                }
+                                required={!isFieldDisabled && isFieldRequired}
+                                disabled={isFieldDisabled}
+                                type={field.type || "text"}
+                                value={formValues[field.name] ?? ""}
+                              />
+                            )}
+                          </label>
+                        );
+                      };
+
+                      return (
+                        <>
+                          {documentFields.length > 0 && (
+                            <div className="document-fields">
+                              {documentFields.map(renderField)}
+                            </div>
                           )}
-                        </label>
+
+                          {otherFields.map(renderField)}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                   <div className="form-actions">
                     <button
@@ -649,11 +1172,30 @@ function Workspace({ user, onLogout }) {
                       onClick={() => {
                         setIsFormOpen(false);
                         setEditingRecord(null);
+                        setFormValues({});
                       }}
                       type="button"
                     >
                       Cancel
                     </button>
+                    <button
+                      className="secondary-action"
+                      disabled={isSaving}
+                      onClick={handleClearForm}
+                      type="button"
+                    >
+                      Clear
+                    </button>
+                    {activeSection === "dailyInputs" && !editingRecord && (
+                      <button
+                        className="secondary-action add-more-action"
+                        disabled={isSaving || isLookupLoading || Boolean(activeLookupError)}
+                        onClick={() => submitForm(true)}
+                        type="button"
+                      >
+                        {isSaving ? "Saving…" : "Add More"}
+                      </button>
+                    )}
                     <button
                       className="primary-action"
                       disabled={isSaving || isLookupLoading || Boolean(activeLookupError)}
@@ -669,10 +1211,21 @@ function Workspace({ user, onLogout }) {
                 <div className="table-toolbar">
                   <div>
                     <h2>{activeConfig.label}</h2>
-                    <span>{records.length} {records.length === 1 ? "record" : "records"}</span>
+                    <span>
+                      {filteredRecords.length} of {records.length} records
+                    </span>
                   </div>
                   <div className="table-toolbar-actions">
                     {isLoading && <span className="loading-indicator">Loading…</span>}
+                    <button
+                      className="refresh-button csv-download-button"
+                      disabled={isLoading}
+                      onClick={handleDownloadCsv}
+                      title="Save the visible table rows as a CSV file"
+                      type="button"
+                    >
+                      Download CSV
+                    </button>
                     <button
                       className="refresh-button"
                       disabled={isLoading}
@@ -683,32 +1236,155 @@ function Workspace({ user, onLogout }) {
                     </button>
                   </div>
                 </div>
+                <div className="table-filters">
+                  <label className="table-search-field">
+                    <span>Search</span>
+                    <input
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder={`Search ${activeConfig.label.toLowerCase()}…`}
+                      type="search"
+                      value={searchTerm}
+                    />
+                  </label>
+                  {activeSection !== "supervisors" && (
+                    <div className="filter-builder">
+                      <label>
+                        <span>Filter field</span>
+                        <select
+                          disabled={availableFilterColumns.length === 0}
+                          onChange={(event) => setFilterField(event.target.value)}
+                          value={selectedFilterField}
+                        >
+                          {availableFilterColumns.map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Contains</span>
+                        <input
+                          onChange={(event) => setFilterValue(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              if (selectedFilterField && filterValue.trim()) {
+                                setFilters((current) => [
+                                  ...current,
+                                  { field: selectedFilterField, value: filterValue.trim() },
+                                ]);
+                                setFilterValue("");
+                                setFilterField("");
+                              }
+                            }
+                          }}
+                          placeholder="Enter a value"
+                          value={filterValue}
+                        />
+                      </label>
+                      <button
+                        className="refresh-button"
+                        disabled={!selectedFilterField || !filterValue.trim()}
+                        onClick={() => {
+                          setFilters((current) => [
+                            ...current,
+                            { field: selectedFilterField, value: filterValue.trim() },
+                          ]);
+                          setFilterValue("");
+                          setFilterField("");
+                        }}
+                        type="button"
+                      >
+                        Add filter
+                      </button>
+                    </div>
+                  )}
+                  {(searchTerm || filters.length > 0) && (
+                    <button
+                      className="clear-filters-button"
+                      onClick={() => {
+                        setSearchTerm("");
+                        setFilters([]);
+                        setFilterValue("");
+                        setFilterField("");
+                      }}
+                      type="button"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {activeSection !== "supervisors" && filters.length > 0 && (
+                  <div aria-label="Active filters" className="active-filters">
+                    {filters.map((filter) => (
+                      <span className="active-filter" key={filter.field}>
+                        {activeColumns.find(([key]) => key === filter.field)?.[1]} contains “{filter.value}”
+                        <button
+                          aria-label={`Remove ${filter.field} filter`}
+                          onClick={() => setFilters((current) =>
+                            current.filter((item) => item.field !== filter.field),
+                          )}
+                          type="button"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="table-scroll">
+                  
+                <div className="table-toolbar">
+                  <button
+                    type="button"
+                    className="table-action delete-action"
+                    disabled={selectedIds.length === 0 || isLoading}
+                    onClick={handleDeleteSelected}
+                  >
+                    Delete Selected ({selectedIds.length})
+                  </button>
+                </div>
                   <table>
-                    <thead>
-                      <tr>
-                        {activeConfig.columns.map(([, label]) => (
-                          <th key={label}>{label}</th>
-                        ))}
-                        <th className="actions-heading">Actions</th>
-                      </tr>
-                    </thead>
+                      <thead>
+    <tr>
+      {/* Select All checkbox */}
+      <th className="select-heading">
+        <input
+          type="checkbox"
+          checked={
+            records.length > 0 &&
+            records.every((row) => selectedIds.includes(row.id))
+          }
+          onChange={() => toggleSelectAll(records)}
+          aria-label="Select all records"
+        />
+      </th>
+
+      {/* Existing column headings */}
+      {activeConfig.columns.map(([, label]) => (
+        <th key={label}>{label}</th>
+      ))}
+
+      <th className="actions-heading">Actions</th>
+    </tr>
+  </thead>
                     <tbody>
-                      {!isLoading && records.map((record, index) => (
-                        <tr key={record.id ?? index}>
+                      {!isLoading && filteredRecords.map((record) => (
+                        <tr key={record.id}>
+                          {/* Row selection checkbox */}
+      <td>
+        <input
+          type="checkbox"
+          checked={selectedIds.includes(record.id)}
+          onChange={() => toggleRowSelection(record.id)}
+          aria-label={`Select row ${record.id}`}
+        />
+      </td>
+
                           {activeConfig.columns.map(([key]) => (
                             <td key={key}>
-                              {key === "supplier_id" && record[key]
-                                ? lookupOptions.suppliers.find(
-                                    (supplier) => supplier.id === record[key],
-                                  )?.company_name ?? `Supplier #${record[key]}`
-                                : activeSection === "elements"
-                                  && key === "raw_material_id"
-                                  && record[key]
-                                    ? lookupOptions.rawMaterials.find(
-                                        (material) => material.id === record[key],
-                                      )?.material_name ?? `Material #${record[key]}`
-                                    : formatCell(record[key])}
+                              {formatCell(
+                                getRelatedCompanyName(key, record[key]) ?? record[key],
+                              )}
                             </td>
                           ))}
                           <td className="row-actions">
@@ -718,6 +1394,17 @@ function Workspace({ user, onLogout }) {
                                 setPageError("");
                                 setNotice("");
                                 setEditingRecord(record);
+                                setFormType(record.type || "raw_material");
+                                const editValues = {};
+                                const fields = activeConfig.updateFields || activeConfig.fields || [];
+                                for (const field of fields) {
+                                  if (field.name === "password") {
+                                    editValues[field.name] = "";
+                                  } else {
+                                    editValues[field.name] = record[field.name] ?? "";
+                                  }
+                                }
+                                setFormValues(editValues);
                                 setIsFormOpen(true);
                               }}
                               type="button"
@@ -734,16 +1421,18 @@ function Workspace({ user, onLogout }) {
                           </td>
                         </tr>
                       ))}
-                      {!isLoading && records.length === 0 && (
+                      {!isLoading && filteredRecords.length === 0 && (
                         <tr>
-                          <td className="empty-state" colSpan={activeConfig.columns.length + 1}>
-                            No records yet.
+                          <td className="empty-state" colSpan={activeConfig.columns.length + 2}>
+                            {records.length === 0
+                              ? "No records yet."
+                              : "No records match your search and filters."}
                           </td>
                         </tr>
                       )}
                       {isLoading && (
                         <tr>
-                          <td className="empty-state" colSpan={activeConfig.columns.length + 1}>
+                          <td className="empty-state" colSpan={activeConfig.columns.length + 2}>
                             Loading records…
                           </td>
                         </tr>
@@ -765,16 +1454,47 @@ function Dashboard({
   counts,
   isLoading,
   onNavigate,
+  onRefresh,
   pageError,
-  sections,
+  navigationItems,
   user,
 }) {
-  const countCards = sections
+  const kpiCards = navigationItems
     .filter((section) => section.id !== "dashboard" && sections[section.id])
     .map((section) => ({
       ...section,
       count: counts[section.id] ?? 0,
+      title: `Total ${section.label}`,
     }));
+  const [reportNotice, setReportNotice] = useState("");
+
+  function generateDailyReport() {
+    const reportDate = new Date().toLocaleDateString("en-CA");
+    const rows = [
+      ["Daily dashboard report", reportDate],
+      ["Role", user.role],
+      [],
+      ["Metric", "Count"],
+      ...kpiCards.map((card) => [
+        card.title,
+        counts[card.id] ?? "Not loaded",
+      ]),
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => {
+        const cell = String(value ?? "");
+        return `"${cell.replaceAll('"', '""')}"`;
+      }).join(","))
+      .join("\r\n");
+    const file = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `daily-report-${reportDate}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    setReportNotice(`Daily report downloaded for ${reportDate}.`);
+  }
 
   return (
     <section aria-labelledby="page-title" className="section-page">
@@ -784,10 +1504,29 @@ function Dashboard({
           <h1 id="page-title">Good day, {user.first_name}</h1>
           <p>Here’s what’s happening in your workspace.</p>
         </div>
-        <span className="role-badge">{user.role}</span>
+        <div className="dashboard-heading-actions">
+          <span className="role-badge">{user.role}</span>
+          <button
+            className="generate-report-button"
+            disabled={isLoading}
+            onClick={generateDailyReport}
+            type="button"
+          >
+            Generate daily report
+          </button>
+          <button
+            className="refresh-button"
+            disabled={isLoading}
+            onClick={onRefresh}
+            type="button"
+          >
+            Refresh KPIs
+          </button>
+        </div>
       </div>
 
       {pageError && <p className="workspace-error" role="alert">{pageError}</p>}
+      {reportNotice && <p className="workspace-notice" role="status">{reportNotice}</p>}
       <p
         className={`backend-status${backendStatus?.ok ? " connected" : " disconnected"}`}
         role="status"
@@ -798,22 +1537,30 @@ function Dashboard({
           : backendStatus?.error ?? "Checking backend…"}
       </p>
 
-      <div className="summary-grid">
-        {countCards.map((card) => (
-          <button
-            className="summary-card"
-            key={card.id}
-            onClick={() => onNavigate(card.id)}
-            type="button"
-          >
-            <span className="summary-icon">{card.marker}</span>
-            <span className="summary-label">{card.label}</span>
-            <strong className="summary-count">
-              {isLoading ? "…" : counts[card.id] ?? 0}
-            </strong>
-            <span className="summary-link">View records <span aria-hidden="true">→</span></span>
-          </button>
-        ))}
+      <div className="kpi-grid-scroll">
+        <div aria-label="Workspace key performance indicators" className="kpi-grid">
+          {kpiCards.map((card) => (
+            <button
+              aria-label={`${card.title}: ${isLoading ? "loading" : card.count}. Open ${card.label}.`}
+              className={`kpi-card kpi-${card.id}`}
+              key={card.id}
+              onClick={() => onNavigate(card.id)}
+              type="button"
+            >
+              <span className="kpi-card-top">
+                <span className="kpi-icon" aria-hidden="true">{card.marker}</span>
+                <span className="kpi-period">ALL RECORDS</span>
+              </span>
+              <span className="kpi-title">{card.title}</span>
+              <strong className="kpi-value">
+                {isLoading ? "…" : counts[card.id] ?? "—"}
+              </strong>
+              <span className="kpi-link">
+                View {card.label.toLowerCase()} <span aria-hidden="true">→</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="dashboard-note">

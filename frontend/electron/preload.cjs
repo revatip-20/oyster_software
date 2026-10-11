@@ -9,12 +9,15 @@ contextBridge.exposeInMainWorld("desktop", {
   listWorkspaceSection: (section) => ipcRenderer.invoke("workspace:list", section),
   createWorkspaceRecord: (section, record) =>
     ipcRenderer.invoke("workspace:create", section, record),
-  mutateWorkspaceRecord: (operation, section, recordId, record) =>
+  mutateWorkspaceRecord: (operation, section, recordId, record, recordIds) =>
     ipcRenderer.invoke(
       "workspace:mutate",
       operation,
       section,
       recordId,
       record,
+      recordIds,
     ),
+  exportWorkspaceCsv: (section, columnLabels, rows) =>
+    ipcRenderer.invoke("workspace:export-csv", section, columnLabels, rows),
 });

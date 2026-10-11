@@ -7,7 +7,7 @@ from pwdlib import PasswordHash
 password_hash = PasswordHash.recommended()
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 30
-REFRESH_TOKEN_DAYS = 7
+REFRESH_TOKEN_DAYS = 365
 
 
 def hash_password(password: str) -> str:
