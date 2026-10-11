@@ -22,6 +22,9 @@ from migrations.v011_remove_element_relations_and_raw_material_supplier import (
 from migrations.v012_daily_input_unit import (
     upgrade as add_unit_to_daily_input,
 )
+from migrations .v013_rawmaterial import (
+    upgrade as add_rate_and_gst_to_raw_material_and_daily_input,
+)   
 
 MIGRATIONS = (
     ("001_initial_schema", create_initial_schema),
@@ -36,6 +39,7 @@ MIGRATIONS = (
     ("010_element_supplier_and_daily_input_user", add_supplier_to_element_and_user_to_daily_input),
     ("011_remove_element_relations_and_raw_material_supplier", remove_element_relations_and_raw_material_supplier),
     ("012_daily_input_unit", add_unit_to_daily_input),
+    ("013_rawmaterial", add_rate_and_gst_to_raw_material_and_daily_input),
 )
 
 

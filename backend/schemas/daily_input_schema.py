@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal
-
+from decimal import Decimal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
@@ -20,6 +20,12 @@ class DailyInputFields(BaseModel):
     item: str | None = Field(default=None, max_length=150)
     quantity: int = Field(ge=1)
     type: Literal["raw_material", "element"]
+    amount: Decimal = Field(default=Decimal("0"), ge=0)
+    cgst_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    ut_sgst_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    igst_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    total_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    invoice_path: str | None = None
     customer_id: int | None = None
     supplier_id: int | None = None
     raw_material_id: int | None = None
@@ -51,6 +57,12 @@ class DailyInputUpdate(BaseModel):
     item: str | None = Field(default=None, max_length=150)
     quantity: int | None = Field(default=None, ge=1)
     type: Literal["raw_material", "element"] | None = None
+    amount: Decimal | None = Field(default=None, ge=0)
+    cgst_amount: Decimal | None = Field(default=None, ge=0)
+    ut_sgst_amount: Decimal | None = Field(default=None, ge=0)
+    igst_amount: Decimal | None = Field(default=None, ge=0)
+    total_amount: Decimal | None = Field(default=None, ge=0)
+    invoice_path: str | None = None
     customer_id: int | None = None
     supplier_id: int | None = None
     raw_material_id: int | None = None
@@ -69,6 +81,12 @@ class DailyInputRead(BaseModel):
     item: str | None = None
     quantity: int
     type: Literal["raw_material", "element"]
+    amount: Decimal
+    cgst_amount: Decimal
+    ut_sgst_amount: Decimal
+    igst_amount: Decimal
+    total_amount: Decimal
+    invoice_path: str | None = None
     customer_id: int | None = None
     supplier_id: int | None = None
     raw_material_id: int | None = None

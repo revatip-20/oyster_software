@@ -15,27 +15,18 @@ export const sections = {
       { name: "last_name", label: "Last name", required: true },
       { name: "email", label: "Email", type: "email", required: true },
       { name: "phone", label: "Phone", required: true },
-      {
-        name: "password",
-        label: "Password",
-        type: "password",
-        required: true,
-        minLength: 8,
-      },
+      { name: "password", label: "Password", type: "password", required: true, minLength: 8,},
     ],
+
     updateFields: [
       { name: "first_name", label: "First name", required: true },
       { name: "last_name", label: "Last name", required: true },
       { name: "email", label: "Email", type: "email", required: true },
       { name: "phone", label: "Phone", required: true },
-      {
-        name: "password",
-        label: "New password (leave blank to keep current)",
-        type: "password",
-        minLength: 8,
-      },
+      {name: "password", label: "New password (leave blank to keep current)", type: "password", minLength: 8,},
     ],
   },
+
   employees: {
     label: "Employees",
     singular: "Employee",
@@ -64,25 +55,43 @@ export const sections = {
       { name: "joining_date", label: "Joining date", type: "date" },
     ],
   },
-  rawMaterials: {
-    label: "Raw materials",
-    singular: "Raw material",
-    description: "Manage raw material names and units.",
-    columns: [
-      ["id", "ID"],
-      ["code", "Code"],
-      ["material_name", "Name"],
-      ["unit", "Unit"],
-    ],
-    fields: [
-      { name: "material_name", label: "Material name", required: true },
-      { name: "unit", label: "Unit", required: true },
-    ],
-    updateFields: [
-      { name: "material_name", label: "Material name", required: true },
-      { name: "unit", label: "Unit", required: true },
-    ],
-  },
+  
+rawMaterials: {
+  label: "Raw materials",
+  singular: "Raw material",
+  description: "Manage raw material names, units, rates, and GST percentages.",
+
+  columns: [
+    ["id", "ID"],
+    ["code", "Code"],
+    ["material_name", "Name"],
+    ["unit", "Unit"],
+    ["rate", "Rate"],
+    ["cgst_percent", "CGST (%)"],
+    ["ut_sgst_percent", "UTGST/SGST (%)"],
+    ["igst_percent", "IGST (%)"],
+  ],
+
+  fields: [
+    { name: "material_name", label: "Material name", required: true },
+    { name: "unit", label: "Unit", required: true },
+    { name: "rate", label: "Rate", type: "number", required: true, min: 0, step: "0.01",},
+    { name: "cgst_percent", label: "CGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
+    { name: "ut_sgst_percent", label: "UTGST/SGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
+    { name: "igst_percent", label: "IGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
+  ],
+
+  updateFields: [
+    { name: "material_name", label: "Material name", required: true },
+    { name: "unit", label: "Unit", required: true },
+    { name: "rate", label: "Rate", type: "number", required: true, min: 0, step: "0.01",},
+    { name: "cgst_percent",label: "CGST (%)",type: "number", required: true, min: 0, max: 100, step: "0.01",},
+    { name: "ut_sgst_percent", label: "UTGST/SGST (%)",type: "number",required: true,min: 0,max: 100, step: "0.01",},
+    { name: "igst_percent", label: "IGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
+    { name: "igst_percent", label: "IGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
+  ],
+},
+
   elements: {
     label: "Elements",
     singular: "Element",
@@ -181,12 +190,18 @@ dailyInputs: {
     ["DC_date", "DC Date"],
     ["bill_no", "Bill No."],
     ["bill_date", "Bill Date"],
-    ["quantity", "Quantity"],
     ["type", "Type"],
     ["raw_material_id", "Raw material"],
     ["element_id", "Element"],
     ["supplier_id", "Supplier"],
     ["customer_id", "Customer"],
+    ["amount", "Amount"],
+    ["cgst_amount", "CGST Amount"],
+    ["ut_sgst_amount", "UTGST/SGST Amount"],
+    ["igst_amount", "IGST Amount"],
+    ["total_amount", "Total Amount"],
+    ["quantity", "Quantity"],
+    
   ],
 
   fields: [
@@ -195,60 +210,22 @@ dailyInputs: {
     { name: "DC_date", label: "DC Date", type: "date", required: true, row: 1 },
     { name: "bill_no", label: "Bill No.", required: true, row: 1 },
     { name: "bill_date", label: "Bill Date", type: "date", required: true, row: 1 },
-
+    {name: "type", label: "Type", type: "select", required: true, options: [{ value: "raw_material", label: "Raw material" }, { value: "element", label: "Element" },], defaultValue: "raw_material",},
+    {name: "raw_material_id", label: "Raw material", type: "rawMaterial", dependsOnType: "raw_material", required: true,},
+    {name: "element_id",label: "Element",type: "element",dependsOnType: "element",required: true,},
     { name: "quantity", label: "Quantity", type: "number", min: "1", step: "1", required: true },
-
-    {
-      name: "type",
-      label: "Type",
-      type: "select",
-      required: true,
-      options: [
-        { value: "raw_material", label: "Raw material" },
-        { value: "element", label: "Element" },
-      ],
-      defaultValue: "raw_material",
-    },
-
-    {
-      name: "raw_material_id",
-      label: "Raw material",
-      type: "rawMaterial",
-      dependsOnType: "raw_material",
-      required: true,
-    },
-
-    {
-      name: "element_id",
-      label: "Element",
-      type: "element",
-      dependsOnType: "element",
-      required: true,
-    },
-
-    {
-      name: "unit",
-      label: "Unit",
-      required: false,
-      readOnly: true,
-      restricted: true
-    },
-
-    {
-      name: "supplier_id",
-      label: "Supplier",
-      type: "supplier",
-      dependsOnType: ["raw_material", "element"],
-      required: (type) => type === "raw_material",
-    },
-
-    {
-      name: "customer_id",
-      label: "Customer",
-      type: "customer",
-      dependsOnType: "element",
-      required: false,
-    },
+    { name: "unit", label: "Unit",required: false, readOnly: true, restricted: true },
+    {name: "rate", label: "Rate", type: "number",required: true, readOnly: true, restricted: true},
+    { name: "cgst_percent", label: "CGST %", type: "number", required: false, readOnly: true, restricted: true }, 
+    { name: "ut_sgst_percent", label: "SGST/UTGST %", type: "number", required: false, readOnly: true, restricted: true }, 
+    { name: "igst_percent", label: "IGST %", type: "number", required: false, readOnly: true, restricted: true },
+    { name: "supplier_id", label: "Supplier", type: "supplier", dependsOnType: ["raw_material", "element"], required: (type) => type === "raw_material",},
+    { name: "customer_id", label: "Customer", type: "customer", dependsOnType: "element", required: false,},
+    { name: "amount", label: "Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "cgst_amount", label: "CGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "ut_sgst_amount", label: "UTGST/SGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "igst_amount", label: "IGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "total_amount", label: "Total Amount", type: "number", required: true, min: 0, step: "0.01" },
   ],
 
   updateFields: [
@@ -257,62 +234,48 @@ dailyInputs: {
     { name: "DC_date", label: "DC Date", type: "date", required: true, row: 1 },
     { name: "bill_no", label: "Bill No.", required: true, row: 1 },
     { name: "bill_date", label: "Bill Date", type: "date", required: true, row: 1 },
-
+    { name: "type", label: "Type", type: "select",required: true, options: [{ value: "raw_material", label: "Raw material" }, { value: "element", label: "Element" },],},
+    {name: "raw_material_id",label: "Raw material",type: "rawMaterial",dependsOnType: "raw_material",required: true,},
+    {name: "element_id",label: "Element",type: "element",dependsOnType: "element",required: true,},
     { name: "quantity", label: "Quantity", type: "number", min: "1", step: "1", required: true },
-
-    {
-      name: "type",
-      label: "Type",
-      type: "select",
-      required: true,
-      options: [
-        { value: "raw_material", label: "Raw material" },
-        { value: "element", label: "Element" },
-      ],
-    },
-
-    {
-      name: "raw_material_id",
-      label: "Raw material",
-      type: "rawMaterial",
-      dependsOnType: "raw_material",
-      required: true,
-    },
-
-    {
-      name: "element_id",
-      label: "Element",
-      type: "element",
-      dependsOnType: "element",
-      required: true,
-    },
-
-    {
-      name: "unit",
-      label: "Unit",
-      required: false,
-      readOnly: true,
-      restricted: true
-    },
-
-    {
-      name: "supplier_id",
-      label: "Supplier",
-      type: "supplier",
-      dependsOnType: ["raw_material", "element"],
-      required: (type) => type === "raw_material",
-    },
-
-    {
-      name: "customer_id",
-      label: "Customer",
-      type: "customer",
-      dependsOnType: "element",
-      required: false,
-    },
+    { name: "unit", label: "Unit",required: false, readOnly: true, restricted: true },
+    {name: "rate", label: "Rate", type: "number",required: true, readOnly: true, restricted: true},
+    { name: "cgst_percent", label: "CGST %", type: "number", required: false, readOnly: true, restricted: true }, 
+    { name: "ut_sgst_percent", label: "SGST/UTGST %", type: "number", required: false, readOnly: true, restricted: true }, 
+    { name: "igst_percent", label: "IGST %", type: "number", required: false, readOnly: true, restricted: true },
+    { name: "supplier_id", label: "Supplier", type: "supplier", dependsOnType: ["raw_material", "element"], required: (type) => type === "raw_material",},
+    { name: "customer_id", label: "Customer", type: "customer", dependsOnType: "element", required: false,},
+    { name: "amount", label: "Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "cgst_amount", label: "CGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "ut_sgst_amount", label: "UTGST/SGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "igst_amount", label: "IGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "total_amount", label: "Total Amount", type: "number", required: true, min: 0, step: "0.01" },
   ],
-},
 
+  updateFields: [
+    // Document fields: first row
+    { name: "DC_no", label: "DC No.", required: true, row: 1 },
+    { name: "DC_date", label: "DC Date", type: "date", required: true, row: 1 },
+    { name: "bill_no", label: "Bill No.", required: true, row: 1 },
+    { name: "bill_date", label: "Bill Date", type: "date", required: true, row: 1 },
+    { name: "type ", label: "Type", type: "select",required: true, options: [{ value: "raw_material", label: "Raw material" }, { value: "element", label: "Element" },],},
+    { name: "raw_material_id", label: "Raw material", type: "rawMaterial",dependsOnType: "raw_material",required: true,},
+    { name: "element_id", label: "Element", type: "element",dependsOnType: "element",required: true,},
+    { name: "quantity", label: "Quantity", type: "number", min: "1", step: "1", required: true },
+    { name: "unit", label: "Unit", required: false, readOnly: true, restricted: true},
+    { name: "rate", label: "Rate", type: "number", required: true, readOnly: true, restricted: true},
+    { name: "cgst_percent", label: "CGST %", type: "number", required: false, readOnly: true, restricted: true },
+    { name: "ut_sgst_percent", label: "SGST/UTGST %", type: "number", required: false, readOnly: true, restricted: true }, 
+    { name: "igst_percent", label: "IGST %", type: "number", required: false, readOnly: true, restricted: true },
+    { name: "supplier_id", label: "Supplier", type: "supplier", dependsOnType: ["raw_material", "element"], required: (type) => type === "raw_material",},
+    { name: "customer_id", label: "Customer", type: "customer", dependsOnType: "element", required: false,},
+    { name: "amount", label: "Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "cgst_amount", label: "CGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "ut_sgst_amount", label: "UTGST/SGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "igst_amount", label: "IGST Amount", type: "number", required: true, min: 0, step: "0.01" },
+    { name: "total_amount", label: "Total Amount", type: "number", required: true, min: 0, step: "0.01" },
+    ],
+  },
 };
 
 export const navigation = [

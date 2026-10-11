@@ -1,4 +1,4 @@
-from sqlalchemy import CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, String, Numeric
 from sqlalchemy.orm import relationship
 
 from db.database import Base
@@ -18,6 +18,17 @@ class DailyInput(Base):
     item = Column(String(150), nullable=True)
     quantity = Column(Integer, nullable=False)
     type = Column(String(20), nullable=False)
+
+     # Amount and GST fields
+    amount = Column(Numeric(12, 2), nullable=False, default=0)
+    cgst_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    ut_sgst_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    igst_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    total_amount = Column(Numeric(12, 2), nullable=False, default=0)
+
+    # Invoice attachment path
+    invoice_path = Column(String(500), nullable=True)
+
     customer_id = Column(Integer, ForeignKey("customer.id"), nullable=True)
     supplier_id = Column(Integer, ForeignKey("supplier.id"), nullable=True)
     raw_material_id = Column(Integer, ForeignKey("raw_material.id"), nullable=True)
@@ -31,4 +42,4 @@ class DailyInput(Base):
     supplier = relationship("Supplier")
     raw_material = relationship("RawMaterial")
     element = relationship("Element")
-    user = relationship("User")
+    user = relationship("User")

@@ -200,26 +200,100 @@ const toggleSelectAll = (rows) => {
   const [filterValue, setFilterValue] = useState("");
   const formRef = useRef(null);
 
-  function handleFormFieldChange(name, value) {
-    setFormValues((current) => {
-      const next = { ...current, [name]: value };
-      if (name === "type") {
-        setFormType(value);
-        if (value === "raw_material") {
-          next.element_id = "";
-          next.customer_id = "";
-        } else if (value === "element") {
-          next.raw_material_id = "";
-        } else if (!value) {
-          next.raw_material_id = "";
-          next.element_id = "";
-          next.supplier_id = "";
-          next.customer_id = "";
-        }
-      }
-      return next;
-    });
+function populateRawMaterialFields(record) {
+  const rawMaterial = lookupOptions.rawMaterials?.find(
+    (material) =>
+      String(material.id) === String(record.raw_material_id)
+  );
+
+  if (!rawMaterial) {
+    return record;
   }
+
+  return {
+    ...record,
+    item: rawMaterial.material_name,
+    unit: rawMaterial.unit ?? "",
+    rate: rawMaterial.rate ?? 0,
+    cgst_percent: rawMaterial.cgst_percent ?? 0,
+    ut_sgst_percent: rawMaterial.ut_sgst_percent ?? 0,
+    igst_percent: rawMaterial.igst_percent ?? 0,
+  };
+}
+
+function handleFormFieldChange(name, value) {
+  setFormValues((current) => {
+    const next = { ...current, [name]: value };
+
+    if (name === "type") {
+      setFormType(value);
+
+      if (value === "raw_material") {
+        next.element_id = "";
+        next.customer_id = "";
+      } else if (value === "element") {
+        next.raw_material_id = "";
+      } else if (!value) {
+        next.raw_material_id = "";
+        next.element_id = "";
+        next.supplier_id = "";
+        next.customer_id = "";
+      }
+    }
+
+    // Calculate Amount = Quantity × Rate
+    if (
+      ["quantity", "rate", "raw_material_id"].includes(name)
+    ) {
+      const quantity = Number(next.quantity) || 0;
+      const rate = Number(next.rate) || 0;
+
+      next.amount = Number((quantity * rate).toFixed(2));
+    }
+
+    // Calculate GST amounts
+    if (
+      [
+        "quantity",
+        "rate",
+        "amount",
+        "cgst_percent",
+        "ut_sgst_percent",
+        "igst_percent",
+        "raw_material_id",
+      ].includes(name)
+    ) {
+      const amount = Number(next.amount) || 0;
+      const cgstPercent = Number(next.cgst_percent) || 0;
+      const sgstPercent = Number(next.ut_sgst_percent) || 0;
+      const igstPercent = Number(next.igst_percent) || 0;
+
+      next.cgst_amount = Number(
+        ((amount * cgstPercent) / 100).toFixed(2)
+      );
+
+      next.ut_sgst_amount = Number(
+        ((amount * sgstPercent) / 100).toFixed(2)
+      );
+
+      next.igst_amount = Number(
+        ((amount * igstPercent) / 100).toFixed(2)
+      );
+
+      next.total_amount = Number(
+        (
+          amount +
+          next.cgst_amount +
+          next.ut_sgst_amount +
+          next.igst_amount
+        ).toFixed(2)
+      );
+    }
+
+    return next;
+  });
+}
+
 
   function handleClearForm() {
     const currentFields = (editingRecord ? activeConfig.updateFields : activeConfig.fields) || [];
@@ -410,92 +484,196 @@ async function submitForm(isAddMore = false) {
 
   setIsSaving(true);
 
-  const record = {};
+  try {
+    const record = {};
 
-  for (const [key, value] of Object.entries(formValues)) {
-    if (value === "" || value === null || value === undefined) {
-      if (editingRecord) {
-        record[key] = null;
+    // --------------------------------------------------
+    // 1. Build the record from form values
+    // --------------------------------------------------
+    const numericFields = [
+      "quantity",
+      "supplier_id",
+      "customer_id",
+      "raw_material_id",
+      "element_id",
+      "user_id",
+      "amount",
+      "cgst_amount",
+      "ut_sgst_amount",
+      "igst_amount",
+      "total_amount",
+    ];
+
+    for (const [key, value] of Object.entries(formValues)) {
+      if (value === "" || value === null || value === undefined) {
+        // For updates, do not automatically send null for every
+        // empty field. The backend rejects null for many fields.
+        continue;
       }
-    } else if (
-      [
+
+      if (numericFields.includes(key)) {
+        const numberValue = Number(value);
+
+        if (!Number.isFinite(numberValue)) {
+          setPageError(`Please enter a valid number for ${key}.`);
+          return;
+        }
+
+        record[key] = numberValue;
+      } else {
+        record[key] = value;
+      }
+    }
+
+    // --------------------------------------------------
+    // 2. Prepare Daily Inputs payload
+    // --------------------------------------------------
+    if (activeSection === "dailyInputs") {
+      // Only send fields supported by DailyInputCreate/Update.
+      // "unit" and rate/GST percentage fields belong to the
+      // frontend/raw-material master, not the DailyInput API.
+      const allowedFields = [
+        "DC_no",
+        "dc_no",
+        "DC_date",
+        "dc_date",
+        "bill_no",
+        "bill_date",
+        "item",
         "quantity",
-        "supplier_id",
+        "type",
         "customer_id",
+        "supplier_id",
         "raw_material_id",
         "element_id",
         "user_id",
-      ].includes(key)
-    ) {
-      record[key] = Number(value);
-    } else {
-      record[key] = value;
-    }
-  }
+        "amount",
+        "cgst_amount",
+        "ut_sgst_amount",
+        "igst_amount",
+        "total_amount",
+      ];
 
-  if (activeSection === "dailyInputs") {
-    // Exclude fields that the DailyInputCreate schema does not accept.
-    const allowedFields = [
-      "DC_no", "dc_no", "DC_date", "dc_date",
-      "bill_no", "bill_date", "item", "quantity",
-      "type", "customer_id", "supplier_id",
-      "raw_material_id", "element_id", "user_id",
-    ];
+      for (const key of Object.keys(record)) {
+        if (!allowedFields.includes(key)) {
+          delete record[key];
+        }
+      }
 
-    for (const key of Object.keys(record)) {
-      if (!allowedFields.includes(key)) {
-        delete record[key];
+      // Normalize field names for the API.
+      if (record.DC_no !== undefined) {
+        record.dc_no = record.DC_no;
+        delete record.DC_no;
+      }
+
+      if (record.DC_date !== undefined) {
+        record.dc_date = record.DC_date;
+        delete record.DC_date;
+      }
+
+      // Assign the logged-in user when available.
+      if (
+        (record.user_id === undefined || record.user_id === null) &&
+        user?.id
+      ) {
+        record.user_id = Number(user.id);
+      }
+
+      // Resolve the selected raw material or element name.
+      if (record.type === "raw_material") {
+        record.customer_id = null;
+        record.element_id = null;
+
+        const rawMaterial = lookupOptions.rawMaterials?.find(
+          (material) =>
+            String(material.id) === String(record.raw_material_id)
+        );
+
+        if (rawMaterial) {
+          record.item = rawMaterial.material_name;
+        }
+      } else if (record.type === "element") {
+        record.raw_material_id = null;
+
+        const element = lookupOptions.elements?.find(
+          (item) => String(item.id) === String(record.element_id)
+        );
+
+        if (element) {
+          record.item = element.element_name;
+        }
+      }
+
+      // On create, send zero for empty amount/GST fields.
+      // On update, omit empty amount/GST fields so the backend
+      // does not receive explicit null values.
+      const amountFields = [
+        "amount",
+        "cgst_amount",
+        "ut_sgst_amount",
+        "igst_amount",
+        "total_amount",
+      ];
+
+      for (const key of amountFields) {
+        const originalValue = formValues[key];
+
+        if (
+          originalValue === "" ||
+          originalValue === null ||
+          originalValue === undefined
+        ) {
+          if (!editingRecord) {
+            record[key] = 0;
+          } else {
+            delete record[key];
+          }
+        }
       }
     }
 
-    if (record.DC_no !== undefined) {
-      record.dc_no = record.DC_no;
-      delete record.DC_no;
-    }
-
-    if (record.DC_date !== undefined) {
-      record.dc_date = record.DC_date;
-      delete record.DC_date;
-    }
-
-    if (!record.user_id && user?.id) {
-      record.user_id = Number(user.id);
-    }
-
-    if (record.type === "raw_material") {
-      record.customer_id = null;
-      record.element_id = null;
-
-      const rm = lookupOptions.rawMaterials?.find(
-        (r) => String(r.id) === String(record.raw_material_id)
-      );
-      if (rm) record.item = rm.material_name;
-
-    } else if (record.type === "element") {
-      record.raw_material_id = null;
-
-      const el = lookupOptions.elements?.find(
-        (e) => String(e.id) === String(record.element_id)
-      );
-      if (el) record.item = el.element_name;
-    }
-
-    console.log("Daily Input request payload:", record);
-  }
-
-  try {
+    // --------------------------------------------------
+    // 3. Remove unchanged fields when editing
+    // --------------------------------------------------
     if (editingRecord) {
-      if (activeSection === "supervisors" && record.password === "") {
+      if (
+        activeSection === "supervisors" &&
+        record.password === ""
+      ) {
         delete record.password;
       }
 
-      for (const [key, value] of Object.entries(record)) {
-        const originalValue = editingRecord[key] ?? null;
+      for (const key of Object.keys(record)) {
+        // Handle API naming differences between DC_no/DC_date
+        // and dc_no/dc_date.
+        let originalValue = editingRecord[key];
 
-        if (
-          value === originalValue ||
-          (value === "" && originalValue === null)
-        ) {
+        if (key === "dc_no" && originalValue === undefined) {
+          originalValue = editingRecord.DC_no;
+        }
+
+        if (key === "dc_date" && originalValue === undefined) {
+          originalValue = editingRecord.DC_date;
+        }
+
+        if (originalValue === undefined) {
+          originalValue = null;
+        }
+
+        const newValue = record[key];
+
+        // Compare dates consistently when possible.
+        const isDateField = [
+          "dc_date",
+          "bill_date",
+        ].includes(key);
+
+        const valuesMatch = isDateField
+          ? String(newValue ?? "").slice(0, 10) ===
+            String(originalValue ?? "").slice(0, 10)
+          : String(newValue ?? "") === String(originalValue ?? "");
+
+        if (valuesMatch) {
           delete record[key];
         }
       }
@@ -509,30 +687,48 @@ async function submitForm(isAddMore = false) {
       }
     }
 
+    // Log the final payload immediately before the API request.
+    console.log("Final API request:", {
+      section: activeSection,
+      operation: editingRecord ? "update" : "create",
+      id: editingRecord?.id,
+      payload: record,
+    });
+
+    // --------------------------------------------------
+    // 4. Save through the desktop API
+    // --------------------------------------------------
     const result = editingRecord
-  ? await window.desktop.mutateWorkspaceRecord(
-      "update",
-      activeSection,
-      editingRecord.id,
-      record,
-    )
-  : await window.desktop.createWorkspaceRecord(
-      activeSection,
-      record,
-    );
-    
+      ? await window.desktop.mutateWorkspaceRecord(
+          "update",
+          activeSection,
+          editingRecord.id,
+          record
+        )
+      : await window.desktop.createWorkspaceRecord(
+          activeSection,
+          record
+        );
+
     if (!result.ok) {
       console.error("API save failed:", result);
+
       setPageError(
         typeof result.error === "string"
           ? result.error
           : JSON.stringify(result.error || result)
       );
 
-      if (result.sessionExpired) onLogout();
+      if (result.sessionExpired) {
+        onLogout();
+      }
+
       return;
     }
 
+    // --------------------------------------------------
+    // 5. Update the UI
+    // --------------------------------------------------
     setRecords((currentRecords) =>
       editingRecord
         ? currentRecords.map((item) =>
@@ -544,7 +740,8 @@ async function submitForm(isAddMore = false) {
     setDashboardCounts((current) => ({
       ...current,
       [activeSection]:
-        (current[activeSection] || 0) + (editingRecord ? 0 : 1),
+        (current[activeSection] || 0) +
+        (editingRecord ? 0 : 1),
     }));
 
     if (isAddMore) {
@@ -557,13 +754,18 @@ async function submitForm(isAddMore = false) {
         bill_no: prev.bill_no ?? "",
         bill_date: prev.bill_date ?? "",
         quantity: prev.quantity ?? "",
-        item: prev.item ?? "",
+        item: "",
         unit: "",
         type: "",
         customer_id: "",
         supplier_id: "",
         raw_material_id: "",
         element_id: "",
+        amount: "",
+        cgst_amount: "",
+        ut_sgst_amount: "",
+        igst_amount: "",
+        total_amount: "",
       }));
 
       setFormType("");
@@ -580,6 +782,7 @@ async function submitForm(isAddMore = false) {
     }
   } catch (error) {
     console.error("Failed to save record:", error);
+
     setPageError(
       error?.message ||
         "Unable to save this record. Check the console for details."
@@ -997,16 +1200,40 @@ async function handleDeleteSelected() {
                                         field.type === "element"
                                       ) {
                                         const selectedRecord = lookupRecords.find(
-                                          (record) =>
-                                            String(record.id) === String(selectedId)
+                                          (record) => String(record.id) === String(selectedId)
                                         );
 
+                                        // Keep your existing unit functionality
                                         handleFormFieldChange(
                                           "unit",
                                           selectedRecord?.unit ?? ""
                                         );
+
+                                        // Populate pricing and GST for raw materials
+                                        if (field.type === "rawMaterial") {
+                                          handleFormFieldChange(
+                                            "rate",
+                                            selectedRecord?.rate ?? 0
+                                          );
+
+                                          handleFormFieldChange(
+                                            "cgst_percent",
+                                            selectedRecord?.cgst_percent ?? 0
+                                          );
+
+                                          handleFormFieldChange(
+                                            "ut_sgst_percent",
+                                            selectedRecord?.ut_sgst_percent ?? 0
+                                          );
+
+                                          handleFormFieldChange(
+                                            "igst_percent",
+                                            selectedRecord?.igst_percent ?? 0
+                                          );
+                                        }
                                       }
                                     }}
+
                                   required={!isFieldDisabled && isFieldRequired}
                                   value={
                                     isFieldDisabled
@@ -1395,8 +1622,13 @@ async function handleDeleteSelected() {
                                 setNotice("");
                                 setEditingRecord(record);
                                 setFormType(record.type || "raw_material");
+
                                 const editValues = {};
-                                const fields = activeConfig.updateFields || activeConfig.fields || [];
+                                const fields =
+                                  activeConfig.updateFields ||
+                                  activeConfig.fields ||
+                                  [];
+
                                 for (const field of fields) {
                                   if (field.name === "password") {
                                     editValues[field.name] = "";
@@ -1404,9 +1636,36 @@ async function handleDeleteSelected() {
                                     editValues[field.name] = record[field.name] ?? "";
                                   }
                                 }
+
+                                // Populate fields from the selected raw material
+                                if (
+                                  record.type === "raw_material" &&
+                                  record.raw_material_id
+                                ) {
+                                  const rm = lookupOptions.rawMaterials?.find(
+                                    (material) =>
+                                      String(material.id) ===
+                                      String(record.raw_material_id)
+                                  );
+
+                                  if (rm) {
+                                    editValues.item = rm.material_name;
+                                    editValues.unit = rm.unit ?? "";
+                                    editValues.rate = rm.rate ?? 0;
+                                    editValues.cgst_percent =
+                                      rm.cgst_percent ?? 0;
+                                    editValues.ut_sgst_percent =
+                                      rm.ut_sgst_percent ?? 0;
+                                    editValues.igst_percent =
+                                      rm.igst_percent ?? 0;
+                                  }
+                                }
+
                                 setFormValues(editValues);
                                 setIsFormOpen(true);
                               }}
+
+
                               type="button"
                             >
                               Edit
