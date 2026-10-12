@@ -32,6 +32,10 @@ dist/
 *.sqlite3
 *.log
 
+# Generated invoice PDFs (keep the folder)
+invoices/*
+!invoices/.gitkeep
+
 # Editor and operating-system files
 .idea/
 .vscode/

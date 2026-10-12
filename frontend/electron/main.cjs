@@ -212,6 +212,13 @@ const workspaceSections = {
     updatePath: (id) => `/daily-inputs/${id}`,
     deletePath: (id) => `/daily-inputs/${id}`,
   },
+  invoices: {
+    roles: ["admin", "supervisor"],
+    listPath: "/invoices/get-invoice",
+    createPath: "/invoices/generate-invoice",
+    updatePath: (id) => `/invoices/${id}`,
+    deletePath: (id) => `/invoices/${id}`,
+  },
 };
 
 async function requestWorkspaceApi(path, method, body) {
@@ -419,6 +426,132 @@ ipcMain.handle(
   }
 );
 
+
+ipcMain.handle("invoices:generate", async (_event, payload) => {
+  if (!authenticatedSession) {
+    return { ok: false, sessionExpired: true, error: "Please sign in again." };
+  }
+  if (!canAccessSection("invoices")) {
+    return { ok: false, error: "You do not have permission to generate invoices." };
+  }
+  if (
+    !payload
+    || typeof payload !== "object"
+    || Array.isArray(payload)
+    || typeof payload.name !== "string"
+    || !payload.name.trim()
+    || !Array.isArray(payload.daily_input_ids)
+    || payload.daily_input_ids.length === 0
+  ) {
+    return {
+      ok: false,
+      error: "Provide an invoice name and at least one Daily Input.",
+    };
+  }
+
+  return requestWorkspaceApi("/invoices/generate-invoice", "POST", {
+    name: payload.name.trim(),
+    daily_input_ids: payload.daily_input_ids.map(Number),
+  });
+});
+
+ipcMain.handle("invoices:download-pdf", async (event, invoiceId) => {
+  if (!authenticatedSession) {
+    return { ok: false, sessionExpired: true, error: "Please sign in again." };
+  }
+  if (!canAccessSection("invoices")) {
+    return { ok: false, error: "You do not have permission to download invoices." };
+  }
+
+  const numericId = Number(invoiceId);
+  if (!Number.isInteger(numericId) || numericId < 1) {
+    return { ok: false, error: "The selected invoice has an invalid ID." };
+  }
+
+  const apiBaseUrl = (
+    process.env.BACKEND_API_URL || "http://127.0.0.1:8000"
+  ).replace(/\/+$/, "");
+  const pathName = `/invoices/${numericId}/pdf`;
+
+  async function fetchPdf(token) {
+    return fetch(`${apiBaseUrl}${pathName}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  let response;
+  try {
+    response = await fetchPdf(authenticatedSession.accessToken);
+  } catch {
+    return {
+      ok: false,
+      error: `Could not connect to the backend at ${apiBaseUrl}. Check that the backend is running.`,
+    };
+  }
+
+  if (response.status === 401) {
+    const refreshed = await refreshAuthenticatedSession();
+    if (!refreshed.ok) {
+      return {
+        ok: false,
+        ...(refreshed.sessionExpired ? { sessionExpired: true } : {}),
+        error: refreshed.error || "Unable to refresh your session.",
+      };
+    }
+    try {
+      response = await fetchPdf(authenticatedSession.accessToken);
+    } catch {
+      return {
+        ok: false,
+        error: `Could not connect to the backend at ${apiBaseUrl}. Your saved session is retained.`,
+      };
+    }
+  }
+
+  if (!response.ok) {
+    let detail = `The backend returned an error (HTTP ${response.status}).`;
+    try {
+      const result = await response.json();
+      if (typeof result.detail === "string") detail = result.detail;
+    } catch {
+      // Keep the HTTP status message when the backend response is not JSON.
+    }
+    if (response.status === 401) {
+      authenticatedSession = null;
+      await clearPersistedSession();
+    }
+    return {
+      ok: false,
+      sessionExpired: response.status === 401,
+      error: detail,
+    };
+  }
+
+  const contentDisposition = response.headers.get("content-disposition") || "";
+  const fileNameMatch = /filename="?([^"]+)"?/i.exec(contentDisposition);
+  const defaultName = fileNameMatch?.[1] || `invoice-${numericId}.pdf`;
+  const pdfBuffer = Buffer.from(await response.arrayBuffer());
+
+  const options = {
+    title: "Save invoice PDF",
+    defaultPath: path.join(app.getPath("downloads"), defaultName),
+    filters: [{ name: "PDF files", extensions: ["pdf"] }],
+  };
+
+  try {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const { canceled, filePath } = window
+      ? await dialog.showSaveDialog(window, options)
+      : await dialog.showSaveDialog(options);
+    if (canceled || !filePath) return { ok: true, canceled: true };
+
+    await fs.writeFile(filePath, pdfBuffer);
+    return { ok: true, filePath };
+  } catch {
+    return { ok: false, error: "Unable to save the invoice PDF." };
+  }
+});
 
 ipcMain.handle("workspace:export-csv", async (event, section, columnLabels, rows) => {
   if (!authenticatedSession) {

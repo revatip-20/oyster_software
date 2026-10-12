@@ -251,30 +251,25 @@ dailyInputs: {
     { name: "igst_amount", label: "IGST Amount", type: "number", required: true, min: 0, step: "0.01" },
     { name: "total_amount", label: "Total Amount", type: "number", required: true, min: 0, step: "0.01" },
   ],
+  },
 
-  updateFields: [
-    // Document fields: first row
-    { name: "DC_no", label: "DC No.", required: true, row: 1 },
-    { name: "DC_date", label: "DC Date", type: "date", required: true, row: 1 },
-    { name: "bill_no", label: "Bill No.", required: true, row: 1 },
-    { name: "bill_date", label: "Bill Date", type: "date", required: true, row: 1 },
-    { name: "type ", label: "Type", type: "select",required: true, options: [{ value: "raw_material", label: "Raw material" }, { value: "element", label: "Element" },],},
-    { name: "raw_material_id", label: "Raw material", type: "rawMaterial",dependsOnType: "raw_material",required: true,},
-    { name: "element_id", label: "Element", type: "element",dependsOnType: "element",required: true,},
-    { name: "quantity", label: "Quantity", type: "number", min: "1", step: "1", required: true },
-    { name: "unit", label: "Unit", required: false, readOnly: true, restricted: true},
-    { name: "rate", label: "Rate", type: "number", required: true, readOnly: true, restricted: true},
-    { name: "cgst_percent", label: "CGST %", type: "number", required: false, readOnly: true, restricted: true },
-    { name: "ut_sgst_percent", label: "SGST/UTGST %", type: "number", required: false, readOnly: true, restricted: true }, 
-    { name: "igst_percent", label: "IGST %", type: "number", required: false, readOnly: true, restricted: true },
-    { name: "supplier_id", label: "Supplier", type: "supplier", dependsOnType: ["raw_material", "element"], required: (type) => type === "raw_material",},
-    { name: "customer_id", label: "Customer", type: "customer", dependsOnType: "element", required: false,},
-    { name: "amount", label: "Amount", type: "number", required: true, min: 0, step: "0.01" },
-    { name: "cgst_amount", label: "CGST Amount", type: "number", required: true, min: 0, step: "0.01" },
-    { name: "ut_sgst_amount", label: "UTGST/SGST Amount", type: "number", required: true, min: 0, step: "0.01" },
-    { name: "igst_amount", label: "IGST Amount", type: "number", required: true, min: 0, step: "0.01" },
-    { name: "total_amount", label: "Total Amount", type: "number", required: true, min: 0, step: "0.01" },
+  invoices: {
+    label: "Invoices",
+    singular: "Invoice",
+    description: "View generated invoices and download their PDF files.",
+    readOnly: true,
+
+    columns: [
+      ["id", "Invoice ID"],
+      ["name", "Invoice Name"],
+      ["daily_input_ids", "Daily Input IDs"],
+      ["invoice_path", "Invoice Path"],
+      ["created_at", "Created At"],
+      ["updated_at", "Updated At"],
     ],
+
+    fields: [],
+    updateFields: [],
   },
 };
 
@@ -287,4 +282,5 @@ export const navigation = [
   { id: "suppliers", label: "Suppliers", marker: "S" },
   { id: "customers", label: "Customers", marker: "C" },
   { id: "dailyInputs", label: "Daily Inputs", marker: "I", roles: ["admin", "supervisor"] },
+  { id: "invoices", label: "Invoices", marker: "V", roles: ["admin", "supervisor"] },
 ];

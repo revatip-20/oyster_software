@@ -134,6 +134,16 @@ function Workspace({ user, onLogout }) {
   const [requestVersion, setRequestVersion] = useState(0);
   const [records, setRecords] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [invoiceName, setInvoiceName] = useState("");
+  const [invoiceSelectedIds, setInvoiceSelectedIds] = useState([]);
+  const [invoiceModalDailyInputs, setInvoiceModalDailyInputs] = useState([]);
+  const [isLoadingInvoiceModalInputs, setIsLoadingInvoiceModalInputs] = useState(false);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [csvSearchTerm, setCsvSearchTerm] = useState("");
+  const [csvSelectedIds, setCsvSelectedIds] = useState([]);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
   const toggleRowSelection = (id) => {
   setSelectedIds((prev) => {
     const normalizedId = String(id);
@@ -318,6 +328,141 @@ function handleFormFieldChange(name, value) {
     setFilters([]);
     setFilterField("");
     setFilterValue("");
+    setSelectedIds([]);
+    setIsInvoiceModalOpen(false);
+    setInvoiceName("");
+    setInvoiceSelectedIds([]);
+    setInvoiceModalDailyInputs([]);
+    setIsCsvModalOpen(false);
+    setCsvSearchTerm("");
+    setCsvSelectedIds([]);
+  }
+
+  function sortDailyInputsNewestFirst(list) {
+    return [...list].sort((a, b) => Number(b.id) - Number(a.id));
+  }
+
+  async function openInvoiceModal() {
+    setPageError("");
+    setNotice("");
+    setInvoiceName("");
+    setInvoiceSelectedIds(
+      activeSection === "dailyInputs" ? [...selectedIds] : [],
+    );
+    setIsInvoiceModalOpen(true);
+
+    if (activeSection === "dailyInputs") {
+      setInvoiceModalDailyInputs(sortDailyInputsNewestFirst(records));
+      return;
+    }
+
+    setIsLoadingInvoiceModalInputs(true);
+    try {
+      const result = await window.desktop.listWorkspaceSection("dailyInputs");
+      if (result.ok && Array.isArray(result.data)) {
+        setInvoiceModalDailyInputs(sortDailyInputsNewestFirst(result.data));
+      } else {
+        setInvoiceModalDailyInputs([]);
+        setPageError(
+          result.ok
+            ? "The backend returned an invalid Daily Inputs list."
+            : result.error,
+        );
+        if (result.sessionExpired) onLogout();
+      }
+    } catch {
+      setInvoiceModalDailyInputs([]);
+      setPageError(
+        "Unable to load Daily Inputs. Close and restart the app, then retry.",
+      );
+    } finally {
+      setIsLoadingInvoiceModalInputs(false);
+    }
+  }
+
+  function toggleInvoiceSelection(id) {
+    setInvoiceSelectedIds((prev) => {
+      const normalizedId = String(id);
+      return prev.some((selectedId) => String(selectedId) === normalizedId)
+        ? prev.filter((selectedId) => String(selectedId) !== normalizedId)
+        : [...prev, id];
+    });
+  }
+
+  async function handleGenerateInvoice(event) {
+    event.preventDefault();
+    const name = invoiceName.trim();
+    if (!name) {
+      setPageError("Enter a name for the invoice.");
+      return;
+    }
+    if (invoiceSelectedIds.length === 0) {
+      setPageError("Select at least one Daily Input for the invoice.");
+      return;
+    }
+
+    setIsGeneratingInvoice(true);
+    setPageError("");
+    setNotice("");
+    try {
+      const result = await window.desktop.generateInvoice({
+        name,
+        daily_input_ids: invoiceSelectedIds.map(Number),
+      });
+      if (!result.ok) {
+        setPageError(result.error || "Unable to generate the invoice.");
+        if (result.sessionExpired) onLogout();
+        return;
+      }
+
+      setIsInvoiceModalOpen(false);
+      setInvoiceName("");
+      setInvoiceSelectedIds([]);
+      setNotice(
+        `Invoice "${result.data?.name || name}" generated successfully.`,
+      );
+      if (activeSection === "invoices") {
+        setRequestVersion((version) => version + 1);
+      }
+
+      if (result.data?.id) {
+        const download = await window.desktop.downloadInvoicePdf(result.data.id);
+        if (!download.ok) {
+          setPageError(download.error || "Invoice saved, but PDF download failed.");
+          if (download.sessionExpired) onLogout();
+        } else if (!download.canceled && download.filePath) {
+          setNotice(
+            `Invoice "${result.data?.name || name}" generated and saved to ${download.filePath}.`,
+          );
+        }
+      }
+    } catch {
+      setPageError(
+        "Unable to reach the desktop API bridge. Close and restart the app, then retry.",
+      );
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  }
+
+  async function handleDownloadInvoicePdf(invoiceId) {
+    setPageError("");
+    setNotice("");
+    try {
+      const result = await window.desktop.downloadInvoicePdf(invoiceId);
+      if (!result.ok) {
+        setPageError(result.error || "Unable to download the invoice PDF.");
+        if (result.sessionExpired) onLogout();
+        return;
+      }
+      if (!result.canceled && result.filePath) {
+        setNotice(`Invoice PDF saved to ${result.filePath}.`);
+      }
+    } catch {
+      setPageError(
+        "Unable to reach the desktop API bridge. Close and restart the app, then retry.",
+      );
+    }
   }
 
   useEffect(() => {
@@ -878,18 +1023,51 @@ async function handleDeleteSelected() {
   }
 }
 
-  async function handleDownloadCsv() {
+  function openCsvModal() {
+    setPageError("");
+    setNotice("");
+    setCsvSearchTerm("");
+    setCsvSelectedIds(selectedIds.length > 0 ? [...selectedIds] : []);
+    setIsCsvModalOpen(true);
+  }
+
+  function toggleCsvSelection(id) {
+    setCsvSelectedIds((prev) => {
+      const normalizedId = String(id);
+      return prev.some((selectedId) => String(selectedId) === normalizedId)
+        ? prev.filter((selectedId) => String(selectedId) !== normalizedId)
+        : [...prev, id];
+    });
+  }
+
+  function formatCsvCell(record, key) {
+    const val = getRelatedCompanyName(key, record[key]) ?? record[key] ?? "";
+    if (typeof val === "string" && key.toLowerCase().includes("date") && val.includes("T")) {
+      return val.split("T")[0];
+    }
+    if (val === null || val === undefined || val === "") return "";
+    if (typeof val === "object") return JSON.stringify(val);
+    return String(val);
+  }
+
+  async function handleDownloadCsv(event) {
+    event.preventDefault();
+    const selectedRecords = records.filter((record) =>
+      csvSelectedIds.some((selectedId) => String(selectedId) === String(record.id)),
+    );
+    if (selectedRecords.length === 0) {
+      setPageError("Select at least one record to export.");
+      return;
+    }
+
+    setIsExportingCsv(true);
     setPageError("");
     setNotice("");
 
     const columnLabels = activeConfig.columns.map(([, label]) => label);
-    const rows = filteredRecords.map((record) => activeConfig.columns.map(([key]) => {
-      const val = getRelatedCompanyName(key, record[key]) ?? record[key] ?? "";
-      if (typeof val === "string" && key.toLowerCase().includes("date") && val.includes("T")) {
-        return val.split("T")[0];
-      }
-      return val;
-    }));
+    const rows = selectedRecords.map((record) =>
+      activeConfig.columns.map(([key]) => formatCsvCell(record, key)),
+    );
 
     try {
       const result = await window.desktop.exportWorkspaceCsv(
@@ -904,10 +1082,15 @@ async function handleDeleteSelected() {
       }
       if (!result.canceled) {
         const fileName = result.filePath.split(/[\\/]/).pop();
+        setIsCsvModalOpen(false);
+        setCsvSearchTerm("");
+        setCsvSelectedIds([]);
         setNotice(`Exported ${result.count} records to ${fileName}.`);
       }
     } catch {
       setPageError("Unable to export this table. Please try again.");
+    } finally {
+      setIsExportingCsv(false);
     }
   }
 
@@ -964,6 +1147,20 @@ async function handleDeleteSelected() {
       );
     });
   }, [activeColumns, filters, lookupOptions, records, searchTerm]);
+
+  const csvFilteredRecords = useMemo(() => {
+    const normalizedSearch = csvSearchTerm.trim().toLocaleLowerCase();
+    if (!normalizedSearch) return records;
+    return records.filter((record) => {
+      const values = [
+        String(record.id ?? ""),
+        ...activeColumns.flatMap(([key]) => getColumnSearchValues(record, key)),
+      ];
+      return values.some((value) =>
+        String(value).toLocaleLowerCase().includes(normalizedSearch),
+      );
+    });
+  }, [activeColumns, csvSearchTerm, lookupOptions, records]);
 
   const activeLookups = activeSection === "dailyInputs"
     ? ["customers", "suppliers", "rawMaterials", "elements"]
@@ -1051,32 +1248,51 @@ async function handleDeleteSelected() {
                   <h1 id="page-title">{activeConfig.label}</h1>
                   <p>{activeConfig.description}</p>
                 </div>
-                <button
-                  className="primary-action"
-                  onClick={() => {
-                    setPageError("");
-                    setNotice("");
-                    if (isFormOpen && !editingRecord) {
-                      setIsFormOpen(false);
-                      setEditingRecord(null);
-                      setFormValues({});
-                    } else {
-                      setEditingRecord(null);
-                      const initialType = activeSection === "dailyInputs" ? "raw_material" : "raw_material";
-                      setFormType(initialType);
-                      const initialValues = {};
-                      const fields = sections[activeSection]?.fields || [];
-                      for (const field of fields) {
-                        initialValues[field.name] = field.defaultValue ?? "";
+                <div className="page-heading-actions">
+                  {(activeSection === "dailyInputs" || activeSection === "invoices") && (
+                    <button
+                      className="generate-invoice-button"
+                      disabled={
+                        isLoading
+                        || (activeSection === "dailyInputs" && records.length === 0)
                       }
-                      setFormValues(initialValues);
-                      setIsFormOpen(true);
-                    }
-                  }}
-                  type="button"
-                >
-                  {isFormOpen && !editingRecord ? "Cancel" : `+ Add ${activeConfig.singular}`}
-                </button>
+                      onClick={() => {
+                        void openInvoiceModal();
+                      }}
+                      type="button"
+                    >
+                      Generate Invoice
+                    </button>
+                  )}
+                  {!activeConfig.readOnly && (
+                    <button
+                      className="primary-action"
+                      onClick={() => {
+                        setPageError("");
+                        setNotice("");
+                        if (isFormOpen && !editingRecord) {
+                          setIsFormOpen(false);
+                          setEditingRecord(null);
+                          setFormValues({});
+                        } else {
+                          setEditingRecord(null);
+                          const initialType = activeSection === "dailyInputs" ? "raw_material" : "raw_material";
+                          setFormType(initialType);
+                          const initialValues = {};
+                          const fields = sections[activeSection]?.fields || [];
+                          for (const field of fields) {
+                            initialValues[field.name] = field.defaultValue ?? "";
+                          }
+                          setFormValues(initialValues);
+                          setIsFormOpen(true);
+                        }
+                      }}
+                      type="button"
+                    >
+                      {isFormOpen && !editingRecord ? "Cancel" : `+ Add ${activeConfig.singular}`}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {pageError && <p className="workspace-error" role="alert">{pageError}</p>}
@@ -1446,9 +1662,9 @@ async function handleDeleteSelected() {
                     {isLoading && <span className="loading-indicator">Loading…</span>}
                     <button
                       className="refresh-button csv-download-button"
-                      disabled={isLoading}
-                      onClick={handleDownloadCsv}
-                      title="Save the visible table rows as a CSV file"
+                      disabled={isLoading || records.length === 0}
+                      onClick={openCsvModal}
+                      title="Select records to export as a CSV file"
                       type="button"
                     >
                       Download CSV
@@ -1560,7 +1776,7 @@ async function handleDeleteSelected() {
                 )}
                 <div className="table-scroll">
                   
-                <div className="table-toolbar">
+                <div className="table-toolbar table-selection-toolbar">
                   <button
                     type="button"
                     className="table-action delete-action"
@@ -1615,61 +1831,70 @@ async function handleDeleteSelected() {
                             </td>
                           ))}
                           <td className="row-actions">
-                            <button
-                              className="table-action"
-                              onClick={() => {
-                                setPageError("");
-                                setNotice("");
-                                setEditingRecord(record);
-                                setFormType(record.type || "raw_material");
+                            {activeSection === "invoices" ? (
+                              <button
+                                className="table-action"
+                                disabled={!record.invoice_path}
+                                onClick={() => handleDownloadInvoicePdf(record.id)}
+                                type="button"
+                              >
+                                Download PDF
+                              </button>
+                            ) : (
+                              <button
+                                className="table-action"
+                                onClick={() => {
+                                  setPageError("");
+                                  setNotice("");
+                                  setEditingRecord(record);
+                                  setFormType(record.type || "raw_material");
 
-                                const editValues = {};
-                                const fields =
-                                  activeConfig.updateFields ||
-                                  activeConfig.fields ||
-                                  [];
+                                  const editValues = {};
+                                  const fields =
+                                    activeConfig.updateFields ||
+                                    activeConfig.fields ||
+                                    [];
 
-                                for (const field of fields) {
-                                  if (field.name === "password") {
-                                    editValues[field.name] = "";
-                                  } else {
-                                    editValues[field.name] = record[field.name] ?? "";
+                                  for (const field of fields) {
+                                    if (field.name === "password") {
+                                      editValues[field.name] = "";
+                                    } else {
+                                      editValues[field.name] = record[field.name] ?? "";
+                                    }
                                   }
-                                }
 
-                                // Populate fields from the selected raw material
-                                if (
-                                  record.type === "raw_material" &&
-                                  record.raw_material_id
-                                ) {
-                                  const rm = lookupOptions.rawMaterials?.find(
-                                    (material) =>
-                                      String(material.id) ===
-                                      String(record.raw_material_id)
-                                  );
+                                  // Populate fields from the selected raw material
+                                  if (
+                                    record.type === "raw_material" &&
+                                    record.raw_material_id
+                                  ) {
+                                    const rm = lookupOptions.rawMaterials?.find(
+                                      (material) =>
+                                        String(material.id) ===
+                                        String(record.raw_material_id)
+                                    );
 
-                                  if (rm) {
-                                    editValues.item = rm.material_name;
-                                    editValues.unit = rm.unit ?? "";
-                                    editValues.rate = rm.rate ?? 0;
-                                    editValues.cgst_percent =
-                                      rm.cgst_percent ?? 0;
-                                    editValues.ut_sgst_percent =
-                                      rm.ut_sgst_percent ?? 0;
-                                    editValues.igst_percent =
-                                      rm.igst_percent ?? 0;
+                                    if (rm) {
+                                      editValues.item = rm.material_name;
+                                      editValues.unit = rm.unit ?? "";
+                                      editValues.rate = rm.rate ?? 0;
+                                      editValues.cgst_percent =
+                                        rm.cgst_percent ?? 0;
+                                      editValues.ut_sgst_percent =
+                                        rm.ut_sgst_percent ?? 0;
+                                      editValues.igst_percent =
+                                        rm.igst_percent ?? 0;
+                                    }
                                   }
-                                }
 
-                                setFormValues(editValues);
-                                setIsFormOpen(true);
-                              }}
-
-
-                              type="button"
-                            >
-                              Edit
-                            </button>
+                                  setFormValues(editValues);
+                                  setIsFormOpen(true);
+                                }}
+                                type="button"
+                              >
+                                Edit
+                              </button>
+                            )}
                             <button
                               className="table-action delete-action"
                               onClick={() => handleDelete(record)}
@@ -1700,6 +1925,271 @@ async function handleDeleteSelected() {
                   </table>
                 </div>
               </div>
+
+              {isInvoiceModalOpen && (
+                <div
+                  aria-labelledby="invoice-modal-title"
+                  aria-modal="true"
+                  className="modal-overlay"
+                  onClick={() => {
+                    if (!isGeneratingInvoice) setIsInvoiceModalOpen(false);
+                  }}
+                  role="presentation"
+                >
+                  <div
+                    className="modal-dialog invoice-modal"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                  >
+                    <div className="record-form-heading">
+                      <h2 id="invoice-modal-title">Generate Invoice</h2>
+                      <p>
+                        Enter an invoice name and select the Daily Input records
+                        to include. A PDF will be created and saved.
+                      </p>
+                    </div>
+
+                    <form className="invoice-modal-form" onSubmit={handleGenerateInvoice}>
+                      {pageError && (
+                        <p className="workspace-error" role="alert">{pageError}</p>
+                      )}
+
+                      <label className="invoice-name-field" htmlFor="invoice-name">
+                        <span>Invoice name</span>
+                        <input
+                          autoFocus
+                          id="invoice-name"
+                          onChange={(event) => setInvoiceName(event.target.value)}
+                          placeholder="e.g. March supplier invoice"
+                          required
+                          type="text"
+                          value={invoiceName}
+                        />
+                      </label>
+
+                      <div className="invoice-select-list">
+                        <div className="invoice-select-heading">
+                          <strong>Daily Inputs</strong>
+                          <button
+                            className="refresh-button"
+                            onClick={() => {
+                              const allIds = invoiceModalDailyInputs.map((record) => record.id);
+                              const allSelected =
+                                allIds.length > 0
+                                && allIds.every((id) =>
+                                  invoiceSelectedIds.some(
+                                    (selectedId) => String(selectedId) === String(id),
+                                  ),
+                                );
+                              setInvoiceSelectedIds(allSelected ? [] : allIds);
+                            }}
+                            type="button"
+                          >
+                            {invoiceModalDailyInputs.length > 0
+                              && invoiceModalDailyInputs.every((record) =>
+                                invoiceSelectedIds.some(
+                                  (selectedId) => String(selectedId) === String(record.id),
+                                ),
+                              )
+                              ? "Clear all"
+                              : "Select all"}
+                          </button>
+                        </div>
+
+                        <div className="invoice-select-scroll">
+                          {isLoadingInvoiceModalInputs ? (
+                            <p className="empty-state">Loading Daily Inputs…</p>
+                          ) : invoiceModalDailyInputs.length === 0 ? (
+                            <p className="empty-state">No Daily Input records available.</p>
+                          ) : (
+                            invoiceModalDailyInputs.map((record) => (
+                              <label className="invoice-select-row" key={record.id}>
+                                <input
+                                  checked={invoiceSelectedIds.some(
+                                    (selectedId) => String(selectedId) === String(record.id),
+                                  )}
+                                  onChange={() => toggleInvoiceSelection(record.id)}
+                                  type="checkbox"
+                                />
+                                <span>
+                                  #{record.id}
+                                  {" · "}
+                                  {record.DC_no || record.dc_no || "—"}
+                                  {" · "}
+                                  {record.item || record.type || "—"}
+                                  {" · "}
+                                  {formatCell(record.total_amount)}
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="form-actions">
+                        <button
+                          className="secondary-action"
+                          disabled={isGeneratingInvoice}
+                          onClick={() => setIsInvoiceModalOpen(false)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="generate-invoice-button"
+                          disabled={
+                            isGeneratingInvoice
+                            || isLoadingInvoiceModalInputs
+                            || !invoiceName.trim()
+                            || invoiceSelectedIds.length === 0
+                          }
+                          type="submit"
+                        >
+                          {isGeneratingInvoice ? "Generating…" : "Generate Invoice"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {isCsvModalOpen && (
+                <div
+                  aria-labelledby="csv-modal-title"
+                  aria-modal="true"
+                  className="modal-overlay"
+                  onClick={() => {
+                    if (!isExportingCsv) setIsCsvModalOpen(false);
+                  }}
+                  role="presentation"
+                >
+                  <div
+                    className="modal-dialog"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                  >
+                    <div className="record-form-heading">
+                      <h2 id="csv-modal-title">Download CSV</h2>
+                      <p>
+                        Search and select the {activeConfig.label.toLowerCase()} records
+                        to include in the CSV file.
+                      </p>
+                    </div>
+
+                    <form className="invoice-modal-form" onSubmit={handleDownloadCsv}>
+                      {pageError && (
+                        <p className="workspace-error" role="alert">{pageError}</p>
+                      )}
+
+                      <label className="invoice-name-field" htmlFor="csv-search">
+                        <span>Search</span>
+                        <input
+                          autoFocus
+                          id="csv-search"
+                          onChange={(event) => setCsvSearchTerm(event.target.value)}
+                          placeholder={`Search ${activeConfig.label.toLowerCase()}…`}
+                          type="search"
+                          value={csvSearchTerm}
+                        />
+                      </label>
+
+                      <div className="invoice-select-list">
+                        <div className="invoice-select-heading">
+                          <strong>
+                            {csvSelectedIds.length} selected
+                          </strong>
+                          <button
+                            className="refresh-button"
+                            onClick={() => {
+                              const visibleIds = csvFilteredRecords.map((record) => record.id);
+                              const allSelected =
+                                visibleIds.length > 0
+                                && visibleIds.every((id) =>
+                                  csvSelectedIds.some(
+                                    (selectedId) => String(selectedId) === String(id),
+                                  ),
+                                );
+                              setCsvSelectedIds((prev) => (
+                                allSelected
+                                  ? prev.filter((selectedId) =>
+                                      !visibleIds.some((id) => String(id) === String(selectedId)),
+                                    )
+                                  : [
+                                      ...prev,
+                                      ...visibleIds.filter((id) =>
+                                        !prev.some((selectedId) => String(selectedId) === String(id)),
+                                      ),
+                                    ]
+                              ));
+                            }}
+                            type="button"
+                          >
+                            {csvFilteredRecords.length > 0
+                              && csvFilteredRecords.every((record) =>
+                                csvSelectedIds.some(
+                                  (selectedId) => String(selectedId) === String(record.id),
+                                ),
+                              )
+                              ? "Clear visible"
+                              : "Select visible"}
+                          </button>
+                        </div>
+
+                        <div className="invoice-select-scroll">
+                          {csvFilteredRecords.length === 0 ? (
+                            <p className="empty-state">
+                              {records.length === 0
+                                ? "No records available."
+                                : "No records match your search."}
+                            </p>
+                          ) : (
+                            csvFilteredRecords.map((record) => (
+                              <label className="invoice-select-row" key={record.id}>
+                                <input
+                                  checked={csvSelectedIds.some(
+                                    (selectedId) => String(selectedId) === String(record.id),
+                                  )}
+                                  onChange={() => toggleCsvSelection(record.id)}
+                                  type="checkbox"
+                                />
+                                <span>
+                                  {activeConfig.columns.slice(0, 4).map(([key], index) => {
+                                    const value = formatCsvCell(record, key);
+                                    return (
+                                      <span key={key}>
+                                        {index > 0 ? " · " : ""}
+                                        {value || "—"}
+                                      </span>
+                                    );
+                                  })}
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="form-actions">
+                        <button
+                          className="secondary-action"
+                          disabled={isExportingCsv}
+                          onClick={() => setIsCsvModalOpen(false)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="csv-download-button"
+                          disabled={isExportingCsv || csvSelectedIds.length === 0}
+                          type="submit"
+                        >
+                          {isExportingCsv ? "Downloading…" : "Download CSV"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </section>
           )}
         </div>
