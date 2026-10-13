@@ -8,6 +8,7 @@ from db.database import get_db
 from models.element import Element
 from routes.user import require_roles
 from schemas.element_schema import ElementCreate, ElementRead, ElementUpdate
+from services.daily_input_sync import sync_daily_inputs_for_element
 from sqlalchemy import select
 
 router = APIRouter(tags=["elements"])
@@ -69,6 +70,7 @@ def edit_element(element_id: int, update: ElementUpdate, db: Session = Depends(g
     for field, value in changes.items():
         setattr(element, field, value)
     element.updated_at = datetime.now(timezone.utc)
+    sync_daily_inputs_for_element(db, element)
     try:
         db.commit()
     except IntegrityError as error:

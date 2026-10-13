@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,7 +11,12 @@ from models.element import Element
 from models.raw_material import RawMaterial
 from models.user import User
 from routes.user import require_roles
-from schemas.daily_input_schema import DailyInputCreate, DailyInputRead, DailyInputUpdate
+from schemas.daily_input_schema import (
+    DailyInputBulkDelete,
+    DailyInputCreate,
+    DailyInputRead,
+    DailyInputUpdate,
+)
 
 router = APIRouter(prefix="/daily-inputs", tags=["daily inputs"])
 permissions = [Depends(require_roles("admin", "supervisor"))]
@@ -38,16 +43,20 @@ def add_daily_input(
     if data.get("type") == "raw_material":
         data["customer_id"] = None
         data["element_id"] = None
-        if not data.get("item") and data.get("raw_material_id"):
+        if data.get("raw_material_id"):
             rm = db.query(RawMaterial).filter(RawMaterial.id == data["raw_material_id"]).first()
             if rm:
-                data["item"] = rm.material_name
+                if not data.get("item"):
+                    data["item"] = rm.material_name
+                data["unit"] = rm.unit
     elif data.get("type") == "element":
         data["raw_material_id"] = None
-        if not data.get("item") and data.get("element_id"):
+        if data.get("element_id"):
             el = db.query(Element).filter(Element.id == data["element_id"]).first()
             if el:
-                data["item"] = el.element_name
+                if not data.get("item"):
+                    data["item"] = el.element_name
+                data["unit"] = el.unit
 
     new_entry = DailyInput(**data)
     db.add(new_entry)
@@ -93,16 +102,20 @@ def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depe
     if entry.type == "raw_material":
         entry.customer_id = None
         entry.element_id = None
-        if not entry.item and entry.raw_material_id:
+        if entry.raw_material_id:
             rm = db.query(RawMaterial).filter(RawMaterial.id == entry.raw_material_id).first()
             if rm:
-                entry.item = rm.material_name
+                if not entry.item:
+                    entry.item = rm.material_name
+                entry.unit = rm.unit
     elif entry.type == "element":
         entry.raw_material_id = None
-        if not entry.item and entry.element_id:
+        if entry.element_id:
             el = db.query(Element).filter(Element.id == entry.element_id).first()
             if el:
-                entry.item = el.element_name
+                if not entry.item:
+                    entry.item = el.element_name
+                entry.unit = el.unit
 
     entry.updated_at = datetime.now(timezone.utc)
     try:
@@ -117,20 +130,16 @@ def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depe
     return entry
 
 
-@router.delete("/", dependencies=permissions)
-def delete_daily_inputs(
-    entry_ids: list[int] = Body(...),
-    db: Session = Depends(get_db),
-):
+def _soft_delete_daily_inputs(entry_ids: list[int], db: Session):
+    unique_ids = list(dict.fromkeys(entry_ids))
     entries = (
         db.query(DailyInput)
         .filter(
-            DailyInput.id.in_(entry_ids),
+            DailyInput.id.in_(unique_ids),
             DailyInput.deleted_at.is_(None),
         )
         .all()
     )
-
     if not entries:
         raise HTTPException(
             status_code=404,
@@ -138,23 +147,33 @@ def delete_daily_inputs(
         )
 
     now = datetime.now(timezone.utc)
-
     try:
         for entry in entries:
             entry.deleted_at = now
             entry.updated_at = now
-
         db.commit()
-
-        return {
-            "message": "Selected Daily Input records deleted successfully",
-            "deleted_count": len(entries),
-            "deleted_ids": [entry.id for entry in entries],
-        }
-
     except Exception:
         db.rollback()
         raise HTTPException(
             status_code=500,
             detail="Failed to delete selected Daily Input records",
         )
+
+    return {
+        "message": "Selected Daily Input records deleted successfully",
+        "deleted_count": len(entries),
+        "deleted_ids": [entry.id for entry in entries],
+    }
+
+
+@router.delete("/{entry_id}", dependencies=permissions)
+def delete_daily_input(entry_id: int, db: Session = Depends(get_db)):
+    return _soft_delete_daily_inputs([entry_id], db)
+
+
+@router.delete("/", dependencies=permissions)
+def delete_daily_inputs(
+    payload: DailyInputBulkDelete,
+    db: Session = Depends(get_db),
+):
+    return _soft_delete_daily_inputs(payload.ids, db)

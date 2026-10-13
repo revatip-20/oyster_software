@@ -19,6 +19,7 @@ class DailyInputFields(BaseModel):
     bill_date: date
     item: str | None = Field(default=None, max_length=150)
     quantity: int = Field(ge=1)
+    unit: str | None = Field(default=None, max_length=30)
     type: Literal["raw_material", "element"]
     amount: Decimal = Field(default=Decimal("0"), ge=0)
     cgst_amount: Decimal = Field(default=Decimal("0"), ge=0)
@@ -56,6 +57,7 @@ class DailyInputUpdate(BaseModel):
     bill_date: date | None = None
     item: str | None = Field(default=None, max_length=150)
     quantity: int | None = Field(default=None, ge=1)
+    unit: str | None = Field(default=None, max_length=30)
     type: Literal["raw_material", "element"] | None = None
     amount: Decimal | None = Field(default=None, ge=0)
     cgst_amount: Decimal | None = Field(default=None, ge=0)
@@ -80,6 +82,7 @@ class DailyInputRead(BaseModel):
     bill_date: date | None
     item: str | None = None
     quantity: int
+    unit: str | None = None
     type: Literal["raw_material", "element"]
     amount: Decimal
     cgst_amount: Decimal

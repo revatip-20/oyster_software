@@ -17,6 +17,7 @@ class DailyInput(Base):
     bill_date = Column(Date, nullable=True)
     item = Column(String(150), nullable=True)
     quantity = Column(Integer, nullable=False)
+    unit = Column(String(30), nullable=True)
     type = Column(String(20), nullable=False)
 
      # Amount and GST fields

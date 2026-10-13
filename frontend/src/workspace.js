@@ -57,7 +57,7 @@ export const sections = {
   },
   
 rawMaterials: {
-  label: "Raw materials",
+    label: "Raw materials",
   singular: "Raw material",
   description: "Manage raw material names, units, rates, and GST percentages.",
 
@@ -65,6 +65,7 @@ rawMaterials: {
     ["id", "ID"],
     ["code", "Code"],
     ["material_name", "Name"],
+    ["hsn_code", "HSN Code"],
     ["unit", "Unit"],
     ["rate", "Rate"],
     ["cgst_percent", "CGST (%)"],
@@ -74,7 +75,18 @@ rawMaterials: {
 
   fields: [
     { name: "material_name", label: "Material name", required: true },
-    { name: "unit", label: "Unit", required: true },
+    { name: "hsn_code", label: "HSN Code" },
+    {
+      name: "unit",
+      label: "Unit",
+      type: "select",
+      required: true,
+      options: [
+        { value: "num", label: "num" },
+        { value: "kg", label: "kg" },
+        { value: "litre", label: "litre" },
+      ],
+    },
     { name: "rate", label: "Rate", type: "number", required: true, min: 0, step: "0.01",},
     { name: "cgst_percent", label: "CGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
     { name: "ut_sgst_percent", label: "UTGST/SGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
@@ -83,11 +95,21 @@ rawMaterials: {
 
   updateFields: [
     { name: "material_name", label: "Material name", required: true },
-    { name: "unit", label: "Unit", required: true },
+    { name: "hsn_code", label: "HSN Code" },
+    {
+      name: "unit",
+      label: "Unit",
+      type: "select",
+      required: true,
+      options: [
+        { value: "num", label: "num" },
+        { value: "kg", label: "kg" },
+        { value: "litre", label: "litre" },
+      ],
+    },
     { name: "rate", label: "Rate", type: "number", required: true, min: 0, step: "0.01",},
     { name: "cgst_percent",label: "CGST (%)",type: "number", required: true, min: 0, max: 100, step: "0.01",},
     { name: "ut_sgst_percent", label: "UTGST/SGST (%)",type: "number",required: true,min: 0,max: 100, step: "0.01",},
-    { name: "igst_percent", label: "IGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
     { name: "igst_percent", label: "IGST (%)", type: "number", required: true, min: 0, max: 100, step: "0.01",},
   ],
 },
@@ -252,25 +274,6 @@ dailyInputs: {
     { name: "total_amount", label: "Total Amount", type: "number", required: true, min: 0, step: "0.01" },
   ],
   },
-
-  invoices: {
-    label: "Invoices",
-    singular: "Invoice",
-    description: "View generated invoices and download their PDF files.",
-    readOnly: true,
-
-    columns: [
-      ["id", "Invoice ID"],
-      ["name", "Invoice Name"],
-      ["daily_input_ids", "Daily Input IDs"],
-      ["invoice_path", "Invoice Path"],
-      ["created_at", "Created At"],
-      ["updated_at", "Updated At"],
-    ],
-
-    fields: [],
-    updateFields: [],
-  },
 };
 
 export const navigation = [
@@ -282,5 +285,4 @@ export const navigation = [
   { id: "suppliers", label: "Suppliers", marker: "S" },
   { id: "customers", label: "Customers", marker: "C" },
   { id: "dailyInputs", label: "Daily Inputs", marker: "I", roles: ["admin", "supervisor"] },
-  { id: "invoices", label: "Invoices", marker: "V", roles: ["admin", "supervisor"] },
 ];

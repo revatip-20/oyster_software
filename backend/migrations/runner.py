@@ -28,6 +28,12 @@ from migrations.v013_rawmaterial import (
 from migrations.v014_invoice import (
     upgrade as add_invoice,
 )
+from migrations.v015_raw_material_hsn_code import (
+    upgrade as add_hsn_code_to_raw_material,
+)
+from migrations.v016_drop_invoices import (
+    upgrade as drop_invoices,
+)
 
 MIGRATIONS = (
     ("001_initial_schema", create_initial_schema),
@@ -44,6 +50,8 @@ MIGRATIONS = (
     ("012_daily_input_unit", add_unit_to_daily_input),
     ("013_rawmaterial", add_rate_and_gst_to_raw_material_and_daily_input),
     ("014_invoice", add_invoice),
+    ("015_raw_material_hsn_code", add_hsn_code_to_raw_material),
+    ("016_drop_invoices", drop_invoices),
 )
 
 

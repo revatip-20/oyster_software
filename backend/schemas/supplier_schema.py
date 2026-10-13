@@ -24,7 +24,7 @@ class SupplierUpdate(BaseModel):
     state: str | None = Field(default=None, max_length=100)
     gst_number: str | None = Field(default=None, max_length=80)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
 
 class SupplierRead(SupplierCreate):

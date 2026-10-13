@@ -12,7 +12,7 @@ class ElementUpdate(BaseModel):
     element_name: str | None = Field(default=None, min_length=1, max_length=150)
     unit: str | None = Field(default=None, max_length=30)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
 
 class ElementRead(ElementCreate):

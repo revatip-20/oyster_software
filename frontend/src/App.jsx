@@ -134,16 +134,17 @@ function Workspace({ user, onLogout }) {
   const [requestVersion, setRequestVersion] = useState(0);
   const [records, setRecords] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [invoiceName, setInvoiceName] = useState("");
-  const [invoiceSelectedIds, setInvoiceSelectedIds] = useState([]);
-  const [invoiceModalDailyInputs, setInvoiceModalDailyInputs] = useState([]);
-  const [isLoadingInvoiceModalInputs, setIsLoadingInvoiceModalInputs] = useState(false);
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [csvSearchTerm, setCsvSearchTerm] = useState("");
+  const [csvBillDateFrom, setCsvBillDateFrom] = useState("");
+  const [csvBillDateTo, setCsvBillDateTo] = useState("");
   const [csvSelectedIds, setCsvSelectedIds] = useState([]);
+  const [csvSelectedColumns, setCsvSelectedColumns] = useState([]);
+  const [csvValueFilters, setCsvValueFilters] = useState({});
+  const [csvFilterFieldToAdd, setCsvFilterFieldToAdd] = useState("");
+  const [csvFilterOptionSearch, setCsvFilterOptionSearch] = useState({});
   const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [csvPreview, setCsvPreview] = useState(null);
   const toggleRowSelection = (id) => {
   setSelectedIds((prev) => {
     const normalizedId = String(id);
@@ -329,140 +330,16 @@ function handleFormFieldChange(name, value) {
     setFilterField("");
     setFilterValue("");
     setSelectedIds([]);
-    setIsInvoiceModalOpen(false);
-    setInvoiceName("");
-    setInvoiceSelectedIds([]);
-    setInvoiceModalDailyInputs([]);
     setIsCsvModalOpen(false);
     setCsvSearchTerm("");
+    setCsvBillDateFrom("");
+    setCsvBillDateTo("");
     setCsvSelectedIds([]);
-  }
-
-  function sortDailyInputsNewestFirst(list) {
-    return [...list].sort((a, b) => Number(b.id) - Number(a.id));
-  }
-
-  async function openInvoiceModal() {
-    setPageError("");
-    setNotice("");
-    setInvoiceName("");
-    setInvoiceSelectedIds(
-      activeSection === "dailyInputs" ? [...selectedIds] : [],
-    );
-    setIsInvoiceModalOpen(true);
-
-    if (activeSection === "dailyInputs") {
-      setInvoiceModalDailyInputs(sortDailyInputsNewestFirst(records));
-      return;
-    }
-
-    setIsLoadingInvoiceModalInputs(true);
-    try {
-      const result = await window.desktop.listWorkspaceSection("dailyInputs");
-      if (result.ok && Array.isArray(result.data)) {
-        setInvoiceModalDailyInputs(sortDailyInputsNewestFirst(result.data));
-      } else {
-        setInvoiceModalDailyInputs([]);
-        setPageError(
-          result.ok
-            ? "The backend returned an invalid Daily Inputs list."
-            : result.error,
-        );
-        if (result.sessionExpired) onLogout();
-      }
-    } catch {
-      setInvoiceModalDailyInputs([]);
-      setPageError(
-        "Unable to load Daily Inputs. Close and restart the app, then retry.",
-      );
-    } finally {
-      setIsLoadingInvoiceModalInputs(false);
-    }
-  }
-
-  function toggleInvoiceSelection(id) {
-    setInvoiceSelectedIds((prev) => {
-      const normalizedId = String(id);
-      return prev.some((selectedId) => String(selectedId) === normalizedId)
-        ? prev.filter((selectedId) => String(selectedId) !== normalizedId)
-        : [...prev, id];
-    });
-  }
-
-  async function handleGenerateInvoice(event) {
-    event.preventDefault();
-    const name = invoiceName.trim();
-    if (!name) {
-      setPageError("Enter a name for the invoice.");
-      return;
-    }
-    if (invoiceSelectedIds.length === 0) {
-      setPageError("Select at least one Daily Input for the invoice.");
-      return;
-    }
-
-    setIsGeneratingInvoice(true);
-    setPageError("");
-    setNotice("");
-    try {
-      const result = await window.desktop.generateInvoice({
-        name,
-        daily_input_ids: invoiceSelectedIds.map(Number),
-      });
-      if (!result.ok) {
-        setPageError(result.error || "Unable to generate the invoice.");
-        if (result.sessionExpired) onLogout();
-        return;
-      }
-
-      setIsInvoiceModalOpen(false);
-      setInvoiceName("");
-      setInvoiceSelectedIds([]);
-      setNotice(
-        `Invoice "${result.data?.name || name}" generated successfully.`,
-      );
-      if (activeSection === "invoices") {
-        setRequestVersion((version) => version + 1);
-      }
-
-      if (result.data?.id) {
-        const download = await window.desktop.downloadInvoicePdf(result.data.id);
-        if (!download.ok) {
-          setPageError(download.error || "Invoice saved, but PDF download failed.");
-          if (download.sessionExpired) onLogout();
-        } else if (!download.canceled && download.filePath) {
-          setNotice(
-            `Invoice "${result.data?.name || name}" generated and saved to ${download.filePath}.`,
-          );
-        }
-      }
-    } catch {
-      setPageError(
-        "Unable to reach the desktop API bridge. Close and restart the app, then retry.",
-      );
-    } finally {
-      setIsGeneratingInvoice(false);
-    }
-  }
-
-  async function handleDownloadInvoicePdf(invoiceId) {
-    setPageError("");
-    setNotice("");
-    try {
-      const result = await window.desktop.downloadInvoicePdf(invoiceId);
-      if (!result.ok) {
-        setPageError(result.error || "Unable to download the invoice PDF.");
-        if (result.sessionExpired) onLogout();
-        return;
-      }
-      if (!result.canceled && result.filePath) {
-        setNotice(`Invoice PDF saved to ${result.filePath}.`);
-      }
-    } catch {
-      setPageError(
-        "Unable to reach the desktop API bridge. Close and restart the app, then retry.",
-      );
-    }
+    setCsvSelectedColumns([]);
+    setCsvValueFilters({});
+    setCsvFilterFieldToAdd("");
+    setCsvFilterOptionSearch({});
+    setCsvPreview(null);
   }
 
   useEffect(() => {
@@ -647,6 +524,10 @@ async function submitForm(isAddMore = false) {
       "ut_sgst_amount",
       "igst_amount",
       "total_amount",
+      "rate",
+      "cgst_percent",
+      "ut_sgst_percent",
+      "igst_percent",
     ];
 
     for (const [key, value] of Object.entries(formValues)) {
@@ -667,6 +548,22 @@ async function submitForm(isAddMore = false) {
         record[key] = numberValue;
       } else {
         record[key] = value;
+      }
+    }
+
+    // Only send fields that belong to the active section form.
+    const sectionFields = (
+      (editingRecord ? activeConfig.updateFields : activeConfig.fields) || []
+    ).map((field) => field.name);
+    const sectionAllowedFields = new Set([
+      ...sectionFields,
+      ...(activeSection === "dailyInputs"
+        ? ["dc_no", "dc_date", "item", "user_id"]
+        : []),
+    ]);
+    for (const key of Object.keys(record)) {
+      if (!sectionAllowedFields.has(key)) {
+        delete record[key];
       }
     }
 
@@ -813,10 +710,13 @@ async function submitForm(isAddMore = false) {
           "bill_date",
         ].includes(key);
 
+        const isNumericCompare = numericFields.includes(key);
         const valuesMatch = isDateField
           ? String(newValue ?? "").slice(0, 10) ===
             String(originalValue ?? "").slice(0, 10)
-          : String(newValue ?? "") === String(originalValue ?? "");
+          : isNumericCompare
+            ? Number(newValue) === Number(originalValue)
+            : String(newValue ?? "") === String(originalValue ?? "");
 
         if (valuesMatch) {
           delete record[key];
@@ -981,7 +881,7 @@ async function handleDeleteSelected() {
 
   if (!confirmed) return;
 
-  const idsToDelete = [...selectedIds];
+    const idsToDelete = [...selectedIds].map(Number);
 
   setPageError("");
   setNotice("");
@@ -1023,11 +923,39 @@ async function handleDeleteSelected() {
   }
 }
 
+  function normalizeCsvDate(value) {
+    if (!value) return "";
+    const text = String(value);
+    return text.includes("T") ? text.split("T")[0] : text.slice(0, 10);
+  }
+
+  function recordMatchesBillDateRange(record) {
+    if (activeSection !== "dailyInputs") return true;
+    const billDate = normalizeCsvDate(record.bill_date);
+    if (!billDate) return false;
+    if (csvBillDateFrom && billDate < csvBillDateFrom) return false;
+    if (csvBillDateTo && billDate > csvBillDateTo) return false;
+    return true;
+  }
+
+  function getRecordFieldValue(record, key) {
+    if (key === "DC_no") return record.DC_no ?? record.dc_no;
+    if (key === "DC_date") return record.DC_date ?? record.dc_date;
+    return record[key];
+  }
+
   function openCsvModal() {
+    const columns = sections[activeSection]?.columns || [];
     setPageError("");
     setNotice("");
     setCsvSearchTerm("");
+    setCsvBillDateFrom("");
+    setCsvBillDateTo("");
     setCsvSelectedIds(selectedIds.length > 0 ? [...selectedIds] : []);
+    setCsvSelectedColumns(columns.map(([key]) => key));
+    setCsvValueFilters({});
+    setCsvFilterOptionSearch({});
+    setCsvFilterFieldToAdd(columns[0]?.[0] || "");
     setIsCsvModalOpen(true);
   }
 
@@ -1040,8 +968,79 @@ async function handleDeleteSelected() {
     });
   }
 
+  function toggleCsvColumn(key) {
+    setCsvSelectedColumns((prev) => (
+      prev.includes(key)
+        ? prev.filter((column) => column !== key)
+        : [...prev, key]
+    ));
+  }
+
+  function toggleCsvFilterValue(field, value) {
+    const normalized = String(value);
+    setCsvValueFilters((prev) => {
+      const current = prev[field] || [];
+      const nextValues = current.some((item) => String(item) === normalized)
+        ? current.filter((item) => String(item) !== normalized)
+        : [...current, normalized];
+      if (nextValues.length === 0) {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return { ...prev, [field]: nextValues };
+    });
+  }
+
+  function addCsvFilterField(fieldOverride) {
+    const columns = sections[activeSection]?.columns || [];
+    const field =
+      fieldOverride
+      || csvFilterFieldToAdd
+      || columns.find(
+        ([key]) => !Object.prototype.hasOwnProperty.call(csvValueFilters, key),
+      )?.[0];
+    if (!field) return;
+
+    const nextFilters = Object.prototype.hasOwnProperty.call(csvValueFilters, field)
+      ? csvValueFilters
+      : { ...csvValueFilters, [field]: [] };
+
+    setCsvValueFilters(nextFilters);
+    setCsvFilterFieldToAdd(
+      columns.find(
+        ([key]) => !Object.prototype.hasOwnProperty.call(nextFilters, key),
+      )?.[0] || "",
+    );
+  }
+
+  function removeCsvFilterField(field) {
+    setCsvValueFilters((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    setCsvFilterOptionSearch((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function setAllCsvFilterValues(field, values) {
+    setCsvValueFilters((prev) => {
+      if (!values || values.length === 0) {
+        const next = { ...prev };
+        next[field] = [];
+        return next;
+      }
+      return { ...prev, [field]: values.map(String) };
+    });
+  }
+
   function formatCsvCell(record, key) {
-    const val = getRelatedCompanyName(key, record[key]) ?? record[key] ?? "";
+    const raw = getRecordFieldValue(record, key);
+    const val = getRelatedCompanyName(key, raw) ?? raw ?? "";
     if (typeof val === "string" && key.toLowerCase().includes("date") && val.includes("T")) {
       return val.split("T")[0];
     }
@@ -1050,48 +1049,109 @@ async function handleDeleteSelected() {
     return String(val);
   }
 
-  async function handleDownloadCsv(event) {
+  function recordMatchesCsvValueFilters(record) {
+    return Object.entries(csvValueFilters).every(([field, values]) => {
+      if (!values || values.length === 0) return true;
+      const raw = getRecordFieldValue(record, field);
+      if (raw === null || raw === undefined || raw === "") return false;
+      return values.some((value) => String(value) === String(raw));
+    });
+  }
+
+  function handleDownloadCsv(event) {
     event.preventDefault();
-    const selectedRecords = records.filter((record) =>
-      csvSelectedIds.some((selectedId) => String(selectedId) === String(record.id)),
-    );
-    if (selectedRecords.length === 0) {
-      setPageError("Select at least one record to export.");
+
+    if (csvSelectedColumns.length === 0) {
+      setPageError("Select at least one column to include in the CSV.");
       return;
+    }
+
+    let exportRecords;
+    if (activeSection === "dailyInputs") {
+      if (!csvBillDateFrom || !csvBillDateTo) {
+        setPageError("Enter both From Bill Date and To Bill Date.");
+        return;
+      }
+      if (csvBillDateFrom > csvBillDateTo) {
+        setPageError("From Bill Date cannot be after To Bill Date.");
+        return;
+      }
+      exportRecords = records.filter(
+        (record) =>
+          recordMatchesBillDateRange(record)
+          && recordMatchesCsvValueFilters(record),
+      );
+      if (exportRecords.length === 0) {
+        setPageError("No Daily Inputs match the selected filters.");
+        return;
+      }
+    } else {
+      exportRecords = csvFilteredRecords.filter((record) =>
+        recordMatchesCsvValueFilters(record)
+        && (
+          csvSelectedIds.length === 0
+          || csvSelectedIds.some((selectedId) => String(selectedId) === String(record.id))
+        ),
+      );
+      if (exportRecords.length === 0) {
+        setPageError("No records match the selected filters.");
+        return;
+      }
     }
 
     setIsExportingCsv(true);
     setPageError("");
     setNotice("");
 
-    const columnLabels = activeConfig.columns.map(([, label]) => label);
-    const rows = selectedRecords.map((record) =>
-      activeConfig.columns.map(([key]) => formatCsvCell(record, key)),
-    );
-
     try {
-      const result = await window.desktop.exportWorkspaceCsv(
-        activeSection,
+      const selectedColumns = activeConfig.columns.filter(([key]) =>
+        csvSelectedColumns.includes(key),
+      );
+      const columnLabels = selectedColumns.map(([, label]) => label);
+      const rows = exportRecords.map((record) =>
+        selectedColumns.map(([key]) => formatCsvCell(record, key)),
+      );
+      const activeFilterCount = Object.values(csvValueFilters).filter(
+        (values) => values.length > 0,
+      ).length;
+      const subtitleParts = [];
+      if (activeSection === "dailyInputs") {
+        subtitleParts.push(`Bill date ${csvBillDateFrom} to ${csvBillDateTo}`);
+      }
+      if (activeFilterCount > 0) {
+        subtitleParts.push(`${activeFilterCount} field filter(s)`);
+      }
+      subtitleParts.push(`${exportRecords.length} record(s)`);
+
+      setCsvPreview({
+        title: `${activeConfig.label} CSV`,
+        subtitle: subtitleParts.join(" · "),
         columnLabels,
         rows,
-      );
-      if (!result.ok) {
-        setPageError(result.error);
-        if (result.sessionExpired) onLogout();
-        return;
-      }
-      if (!result.canceled) {
-        const fileName = result.filePath.split(/[\\/]/).pop();
-        setIsCsvModalOpen(false);
-        setCsvSearchTerm("");
-        setCsvSelectedIds([]);
-        setNotice(`Exported ${result.count} records to ${fileName}.`);
-      }
+      });
+      setIsCsvModalOpen(false);
+      setCsvSearchTerm("");
+      setCsvBillDateFrom("");
+      setCsvBillDateTo("");
+      setCsvSelectedIds([]);
+      setCsvSelectedColumns([]);
+      setCsvValueFilters({});
+      setCsvFilterFieldToAdd("");
+      setCsvFilterOptionSearch({});
+      setNotice(`Opened ${exportRecords.length} record(s) for viewing and printing.`);
     } catch {
-      setPageError("Unable to export this table. Please try again.");
+      setPageError("Unable to open this table. Please try again.");
     } finally {
       setIsExportingCsv(false);
     }
+  }
+
+  function handlePrintCsvPreview() {
+    window.print();
+  }
+
+  function closeCsvPreview() {
+    setCsvPreview(null);
   }
 
   const activeNavigation = availableNavigation.find(
@@ -1127,10 +1187,60 @@ async function handleDeleteSelected() {
   }
 
   function getColumnSearchValues(record, key) {
-    const values = [record[key], getRelatedCompanyName(key, record[key])];
+    const raw = getRecordFieldValue(record, key);
+    const values = [raw, getRelatedCompanyName(key, raw)];
     return values
       .filter((value) => value !== null && value !== undefined)
       .map((value) => String(value).toLocaleLowerCase());
+  }
+
+  function getCsvFilterOptions(field) {
+    if (field === "type") {
+      return [
+        { value: "raw_material", label: "Raw material" },
+        { value: "element", label: "Element" },
+      ];
+    }
+
+    let lookupOptionsForField = [];
+    if (field === "supplier_id") {
+      lookupOptionsForField = (lookupOptions.suppliers || []).map((item) => ({
+        value: String(item.id),
+        label: item.company_name || `Supplier #${item.id}`,
+      }));
+    } else if (field === "customer_id") {
+      lookupOptionsForField = (lookupOptions.customers || []).map((item) => ({
+        value: String(item.id),
+        label: item.company_name || `Customer #${item.id}`,
+      }));
+    } else if (field === "raw_material_id") {
+      lookupOptionsForField = (lookupOptions.rawMaterials || []).map((item) => ({
+        value: String(item.id),
+        label: item.material_name || `Raw material #${item.id}`,
+      }));
+    } else if (field === "element_id") {
+      lookupOptionsForField = (lookupOptions.elements || []).map((item) => ({
+        value: String(item.id),
+        label: item.element_name || `Element #${item.id}`,
+      }));
+    }
+
+    if (lookupOptionsForField.length > 0) {
+      return lookupOptionsForField.sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    const unique = new Map();
+    for (const record of records) {
+      const raw = getRecordFieldValue(record, field);
+      if (raw === null || raw === undefined || raw === "") continue;
+      const value = String(raw);
+      if (!unique.has(value)) {
+        unique.set(value, formatCsvCell(record, field) || value);
+      }
+    }
+    return [...unique.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }
 
   const filteredRecords = useMemo(() => {
@@ -1150,8 +1260,10 @@ async function handleDeleteSelected() {
 
   const csvFilteredRecords = useMemo(() => {
     const normalizedSearch = csvSearchTerm.trim().toLocaleLowerCase();
-    if (!normalizedSearch) return records;
     return records.filter((record) => {
+      if (!recordMatchesBillDateRange(record)) return false;
+      if (!recordMatchesCsvValueFilters(record)) return false;
+      if (!normalizedSearch) return true;
       const values = [
         String(record.id ?? ""),
         ...activeColumns.flatMap(([key]) => getColumnSearchValues(record, key)),
@@ -1160,7 +1272,16 @@ async function handleDeleteSelected() {
         String(value).toLocaleLowerCase().includes(normalizedSearch),
       );
     });
-  }, [activeColumns, csvSearchTerm, lookupOptions, records]);
+  }, [
+    activeColumns,
+    activeSection,
+    csvBillDateFrom,
+    csvBillDateTo,
+    csvSearchTerm,
+    csvValueFilters,
+    lookupOptions,
+    records,
+  ]);
 
   const activeLookups = activeSection === "dailyInputs"
     ? ["customers", "suppliers", "rawMaterials", "elements"]
@@ -1249,21 +1370,6 @@ async function handleDeleteSelected() {
                   <p>{activeConfig.description}</p>
                 </div>
                 <div className="page-heading-actions">
-                  {(activeSection === "dailyInputs" || activeSection === "invoices") && (
-                    <button
-                      className="generate-invoice-button"
-                      disabled={
-                        isLoading
-                        || (activeSection === "dailyInputs" && records.length === 0)
-                      }
-                      onClick={() => {
-                        void openInvoiceModal();
-                      }}
-                      type="button"
-                    >
-                      Generate Invoice
-                    </button>
-                  )}
                   {!activeConfig.readOnly && (
                     <button
                       className="primary-action"
@@ -1664,10 +1770,10 @@ async function handleDeleteSelected() {
                       className="refresh-button csv-download-button"
                       disabled={isLoading || records.length === 0}
                       onClick={openCsvModal}
-                      title="Select records to export as a CSV file"
+                      title="Open records as a CSV table for viewing and printing"
                       type="button"
                     >
-                      Download CSV
+                      Open CSV
                     </button>
                     <button
                       className="refresh-button"
@@ -1795,7 +1901,9 @@ async function handleDeleteSelected() {
           type="checkbox"
           checked={
             records.length > 0 &&
-            records.every((row) => selectedIds.includes(row.id))
+            records.every((row) =>
+              selectedIds.some((selectedId) => String(selectedId) === String(row.id))
+            )
           }
           onChange={() => toggleSelectAll(records)}
           aria-label="Select all records"
@@ -1817,7 +1925,7 @@ async function handleDeleteSelected() {
       <td>
         <input
           type="checkbox"
-          checked={selectedIds.includes(record.id)}
+          checked={selectedIds.some((selectedId) => String(selectedId) === String(record.id))}
           onChange={() => toggleRowSelection(record.id)}
           aria-label={`Select row ${record.id}`}
         />
@@ -1831,16 +1939,6 @@ async function handleDeleteSelected() {
                             </td>
                           ))}
                           <td className="row-actions">
-                            {activeSection === "invoices" ? (
-                              <button
-                                className="table-action"
-                                disabled={!record.invoice_path}
-                                onClick={() => handleDownloadInvoicePdf(record.id)}
-                                type="button"
-                              >
-                                Download PDF
-                              </button>
-                            ) : (
                               <button
                                 className="table-action"
                                 onClick={() => {
@@ -1894,7 +1992,6 @@ async function handleDeleteSelected() {
                               >
                                 Edit
                               </button>
-                            )}
                             <button
                               className="table-action delete-action"
                               onClick={() => handleDelete(record)}
@@ -1926,133 +2023,6 @@ async function handleDeleteSelected() {
                 </div>
               </div>
 
-              {isInvoiceModalOpen && (
-                <div
-                  aria-labelledby="invoice-modal-title"
-                  aria-modal="true"
-                  className="modal-overlay"
-                  onClick={() => {
-                    if (!isGeneratingInvoice) setIsInvoiceModalOpen(false);
-                  }}
-                  role="presentation"
-                >
-                  <div
-                    className="modal-dialog invoice-modal"
-                    onClick={(event) => event.stopPropagation()}
-                    role="dialog"
-                  >
-                    <div className="record-form-heading">
-                      <h2 id="invoice-modal-title">Generate Invoice</h2>
-                      <p>
-                        Enter an invoice name and select the Daily Input records
-                        to include. A PDF will be created and saved.
-                      </p>
-                    </div>
-
-                    <form className="invoice-modal-form" onSubmit={handleGenerateInvoice}>
-                      {pageError && (
-                        <p className="workspace-error" role="alert">{pageError}</p>
-                      )}
-
-                      <label className="invoice-name-field" htmlFor="invoice-name">
-                        <span>Invoice name</span>
-                        <input
-                          autoFocus
-                          id="invoice-name"
-                          onChange={(event) => setInvoiceName(event.target.value)}
-                          placeholder="e.g. March supplier invoice"
-                          required
-                          type="text"
-                          value={invoiceName}
-                        />
-                      </label>
-
-                      <div className="invoice-select-list">
-                        <div className="invoice-select-heading">
-                          <strong>Daily Inputs</strong>
-                          <button
-                            className="refresh-button"
-                            onClick={() => {
-                              const allIds = invoiceModalDailyInputs.map((record) => record.id);
-                              const allSelected =
-                                allIds.length > 0
-                                && allIds.every((id) =>
-                                  invoiceSelectedIds.some(
-                                    (selectedId) => String(selectedId) === String(id),
-                                  ),
-                                );
-                              setInvoiceSelectedIds(allSelected ? [] : allIds);
-                            }}
-                            type="button"
-                          >
-                            {invoiceModalDailyInputs.length > 0
-                              && invoiceModalDailyInputs.every((record) =>
-                                invoiceSelectedIds.some(
-                                  (selectedId) => String(selectedId) === String(record.id),
-                                ),
-                              )
-                              ? "Clear all"
-                              : "Select all"}
-                          </button>
-                        </div>
-
-                        <div className="invoice-select-scroll">
-                          {isLoadingInvoiceModalInputs ? (
-                            <p className="empty-state">Loading Daily Inputs…</p>
-                          ) : invoiceModalDailyInputs.length === 0 ? (
-                            <p className="empty-state">No Daily Input records available.</p>
-                          ) : (
-                            invoiceModalDailyInputs.map((record) => (
-                              <label className="invoice-select-row" key={record.id}>
-                                <input
-                                  checked={invoiceSelectedIds.some(
-                                    (selectedId) => String(selectedId) === String(record.id),
-                                  )}
-                                  onChange={() => toggleInvoiceSelection(record.id)}
-                                  type="checkbox"
-                                />
-                                <span>
-                                  #{record.id}
-                                  {" · "}
-                                  {record.DC_no || record.dc_no || "—"}
-                                  {" · "}
-                                  {record.item || record.type || "—"}
-                                  {" · "}
-                                  {formatCell(record.total_amount)}
-                                </span>
-                              </label>
-                            ))
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="form-actions">
-                        <button
-                          className="secondary-action"
-                          disabled={isGeneratingInvoice}
-                          onClick={() => setIsInvoiceModalOpen(false)}
-                          type="button"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="generate-invoice-button"
-                          disabled={
-                            isGeneratingInvoice
-                            || isLoadingInvoiceModalInputs
-                            || !invoiceName.trim()
-                            || invoiceSelectedIds.length === 0
-                          }
-                          type="submit"
-                        >
-                          {isGeneratingInvoice ? "Generating…" : "Generate Invoice"}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
               {isCsvModalOpen && (
                 <div
                   aria-labelledby="csv-modal-title"
@@ -2064,110 +2034,340 @@ async function handleDeleteSelected() {
                   role="presentation"
                 >
                   <div
-                    className="modal-dialog"
+                    className="modal-dialog csv-options-dialog"
                     onClick={(event) => event.stopPropagation()}
                     role="dialog"
                   >
                     <div className="record-form-heading">
-                      <h2 id="csv-modal-title">Download CSV</h2>
+                      <h2 id="csv-modal-title">Open CSV</h2>
                       <p>
-                        Search and select the {activeConfig.label.toLowerCase()} records
-                        to include in the CSV file.
+                        Choose columns and optional field filters
+                        {activeSection === "dailyInputs"
+                          ? ", plus a bill date range."
+                          : "."}
+                        {" "}Matching records will open for viewing and printing.
                       </p>
                     </div>
 
-                    <form className="invoice-modal-form" onSubmit={handleDownloadCsv}>
+                    <form className="invoice-modal-form csv-options-form" onSubmit={handleDownloadCsv}>
                       {pageError && (
                         <p className="workspace-error" role="alert">{pageError}</p>
                       )}
 
-                      <label className="invoice-name-field" htmlFor="csv-search">
-                        <span>Search</span>
-                        <input
-                          autoFocus
-                          id="csv-search"
-                          onChange={(event) => setCsvSearchTerm(event.target.value)}
-                          placeholder={`Search ${activeConfig.label.toLowerCase()}…`}
-                          type="search"
-                          value={csvSearchTerm}
-                        />
-                      </label>
+                      {activeSection === "dailyInputs" && (
+                        <div className="csv-date-range">
+                          <label className="invoice-name-field" htmlFor="csv-bill-date-from">
+                            <span>From Bill Date</span>
+                            <input
+                              autoFocus
+                              id="csv-bill-date-from"
+                              onChange={(event) => setCsvBillDateFrom(event.target.value)}
+                              required
+                              type="date"
+                              value={csvBillDateFrom}
+                            />
+                          </label>
+                          <label className="invoice-name-field" htmlFor="csv-bill-date-to">
+                            <span>To Bill Date</span>
+                            <input
+                              id="csv-bill-date-to"
+                              min={csvBillDateFrom || undefined}
+                              onChange={(event) => setCsvBillDateTo(event.target.value)}
+                              required
+                              type="date"
+                              value={csvBillDateTo}
+                            />
+                          </label>
+                        </div>
+                      )}
 
                       <div className="invoice-select-list">
                         <div className="invoice-select-heading">
                           <strong>
-                            {csvSelectedIds.length} selected
+                            Columns ({csvSelectedColumns.length}/{activeConfig.columns.length})
                           </strong>
                           <button
                             className="refresh-button"
                             onClick={() => {
-                              const visibleIds = csvFilteredRecords.map((record) => record.id);
-                              const allSelected =
-                                visibleIds.length > 0
-                                && visibleIds.every((id) =>
-                                  csvSelectedIds.some(
-                                    (selectedId) => String(selectedId) === String(id),
-                                  ),
-                                );
-                              setCsvSelectedIds((prev) => (
-                                allSelected
-                                  ? prev.filter((selectedId) =>
-                                      !visibleIds.some((id) => String(id) === String(selectedId)),
-                                    )
-                                  : [
-                                      ...prev,
-                                      ...visibleIds.filter((id) =>
-                                        !prev.some((selectedId) => String(selectedId) === String(id)),
-                                      ),
-                                    ]
-                              ));
+                              const allKeys = activeConfig.columns.map(([key]) => key);
+                              const allSelected = allKeys.every((key) =>
+                                csvSelectedColumns.includes(key),
+                              );
+                              setCsvSelectedColumns(allSelected ? [] : allKeys);
                             }}
                             type="button"
                           >
-                            {csvFilteredRecords.length > 0
-                              && csvFilteredRecords.every((record) =>
-                                csvSelectedIds.some(
-                                  (selectedId) => String(selectedId) === String(record.id),
-                                ),
-                              )
-                              ? "Clear visible"
-                              : "Select visible"}
+                            {activeConfig.columns.every(([key]) =>
+                              csvSelectedColumns.includes(key),
+                            )
+                              ? "Clear all"
+                              : "Select all"}
                           </button>
                         </div>
+                        <div className="csv-column-grid">
+                          {activeConfig.columns.map(([key, label]) => (
+                            <label className="csv-check-option" key={key}>
+                              <input
+                                checked={csvSelectedColumns.includes(key)}
+                                onChange={() => toggleCsvColumn(key)}
+                                type="checkbox"
+                              />
+                              <span>{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
 
-                        <div className="invoice-select-scroll">
-                          {csvFilteredRecords.length === 0 ? (
+                      <div className="invoice-select-list">
+                        <div className="invoice-select-heading">
+                          <strong>Field filters</strong>
+                        </div>
+
+                        <div className="csv-filter-list">
+                          <p className="csv-filter-empty">
+                            Choose a field (for example Supplier), then tick one or more values from the list.
+                            You can add multiple fields.
+                          </p>
+
+                          <div className="csv-filter-add">
+                            <label className="invoice-name-field csv-filter-field-picker" htmlFor="csv-filter-field">
+                              <span>Filter field</span>
+                              <select
+                                id="csv-filter-field"
+                                onChange={(event) => {
+                                  const field = event.target.value;
+                                  setCsvFilterFieldToAdd(field);
+                                  if (field) addCsvFilterField(field);
+                                }}
+                                value=""
+                              >
+                                <option value="">
+                                  Select a field to filter…
+                                </option>
+                                {activeConfig.columns
+                                  .filter(
+                                    ([key]) =>
+                                      !Object.prototype.hasOwnProperty.call(csvValueFilters, key),
+                                  )
+                                  .map(([key, label]) => (
+                                    <option key={key} value={key}>
+                                      {label}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          {Object.keys(csvValueFilters).length === 0 ? (
                             <p className="empty-state">
-                              {records.length === 0
-                                ? "No records available."
-                                : "No records match your search."}
+                              No filters added yet. Pick a field above to view and multi-select its values.
                             </p>
                           ) : (
-                            csvFilteredRecords.map((record) => (
-                              <label className="invoice-select-row" key={record.id}>
-                                <input
-                                  checked={csvSelectedIds.some(
-                                    (selectedId) => String(selectedId) === String(record.id),
-                                  )}
-                                  onChange={() => toggleCsvSelection(record.id)}
-                                  type="checkbox"
-                                />
-                                <span>
-                                  {activeConfig.columns.slice(0, 4).map(([key], index) => {
-                                    const value = formatCsvCell(record, key);
-                                    return (
-                                      <span key={key}>
-                                        {index > 0 ? " · " : ""}
-                                        {value || "—"}
-                                      </span>
-                                    );
-                                  })}
-                                </span>
-                              </label>
-                            ))
+                            Object.entries(csvValueFilters).map(([field, selectedValues]) => {
+                              const fieldLabel =
+                                activeConfig.columns.find(([key]) => key === field)?.[1] || field;
+                              const options = getCsvFilterOptions(field);
+                              const optionSearch = (csvFilterOptionSearch[field] || "")
+                                .trim()
+                                .toLocaleLowerCase();
+                              const visibleOptions = optionSearch
+                                ? options.filter((option) =>
+                                    String(option.label).toLocaleLowerCase().includes(optionSearch)
+                                    || String(option.value).toLocaleLowerCase().includes(optionSearch),
+                                  )
+                                : options;
+                              const allVisibleSelected =
+                                visibleOptions.length > 0
+                                && visibleOptions.every((option) =>
+                                  selectedValues.some(
+                                    (value) => String(value) === String(option.value),
+                                  ),
+                                );
+
+                              return (
+                                <div className="csv-filter-block" key={field}>
+                                  <div className="csv-filter-block-heading">
+                                    <strong>{fieldLabel}</strong>
+                                    <div className="csv-filter-block-actions">
+                                      <button
+                                        className="refresh-button"
+                                        disabled={visibleOptions.length === 0}
+                                        onClick={() => {
+                                          if (allVisibleSelected) {
+                                            const visibleSet = new Set(
+                                              visibleOptions.map((option) => String(option.value)),
+                                            );
+                                            setAllCsvFilterValues(
+                                              field,
+                                              selectedValues.filter(
+                                                (value) => !visibleSet.has(String(value)),
+                                              ),
+                                            );
+                                          } else {
+                                            const merged = new Set([
+                                              ...selectedValues.map(String),
+                                              ...visibleOptions.map((option) => String(option.value)),
+                                            ]);
+                                            setAllCsvFilterValues(field, [...merged]);
+                                          }
+                                        }}
+                                        type="button"
+                                      >
+                                        {allVisibleSelected ? "Clear visible" : "Select visible"}
+                                      </button>
+                                      <button
+                                        className="refresh-button"
+                                        onClick={() => removeCsvFilterField(field)}
+                                        type="button"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="csv-filter-search-wrap">
+                                    <input
+                                      onChange={(event) =>
+                                        setCsvFilterOptionSearch((prev) => ({
+                                          ...prev,
+                                          [field]: event.target.value,
+                                        }))
+                                      }
+                                      placeholder={`Search ${fieldLabel.toLowerCase()}…`}
+                                      type="search"
+                                      value={csvFilterOptionSearch[field] || ""}
+                                    />
+                                  </div>
+
+                                  <div className="invoice-select-scroll csv-filter-options">
+                                    {options.length === 0 ? (
+                                      <p className="empty-state">No values available for this field.</p>
+                                    ) : visibleOptions.length === 0 ? (
+                                      <p className="empty-state">No values match your search.</p>
+                                    ) : (
+                                      visibleOptions.map((option) => (
+                                        <label
+                                          className="invoice-select-row"
+                                          key={`${field}-${option.value}`}
+                                        >
+                                          <input
+                                            checked={selectedValues.some(
+                                              (value) => String(value) === String(option.value),
+                                            )}
+                                            onChange={() =>
+                                              toggleCsvFilterValue(field, option.value)
+                                            }
+                                            type="checkbox"
+                                          />
+                                          <span>{option.label}</span>
+                                        </label>
+                                      ))
+                                    )}
+                                  </div>
+                                  <p className="csv-filter-hint">
+                                    {selectedValues.length === 0
+                                      ? `Tick one or more ${fieldLabel.toLowerCase()} values below.`
+                                      : `${selectedValues.length} ${fieldLabel.toLowerCase()} value(s) selected.`}
+                                  </p>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       </div>
+
+                      {activeSection !== "dailyInputs" && (
+                        <>
+                          <label className="invoice-name-field" htmlFor="csv-search">
+                            <span>Search</span>
+                            <input
+                              id="csv-search"
+                              onChange={(event) => setCsvSearchTerm(event.target.value)}
+                              placeholder={`Search ${activeConfig.label.toLowerCase()}…`}
+                              type="search"
+                              value={csvSearchTerm}
+                            />
+                          </label>
+
+                          <div className="invoice-select-list">
+                            <div className="invoice-select-heading">
+                              <strong>
+                                {csvSelectedIds.length > 0
+                                  ? `${csvSelectedIds.length} row(s) selected`
+                                  : `${csvFilteredRecords.length} matching row(s)`}
+                              </strong>
+                              <button
+                                className="refresh-button"
+                                onClick={() => {
+                                  const visibleIds = csvFilteredRecords.map((record) => record.id);
+                                  const allSelected =
+                                    visibleIds.length > 0
+                                    && visibleIds.every((id) =>
+                                      csvSelectedIds.some(
+                                        (selectedId) => String(selectedId) === String(id),
+                                      ),
+                                    );
+                                  setCsvSelectedIds((prev) => (
+                                    allSelected
+                                      ? prev.filter((selectedId) =>
+                                          !visibleIds.some((id) => String(id) === String(selectedId)),
+                                        )
+                                      : [
+                                          ...prev,
+                                          ...visibleIds.filter((id) =>
+                                            !prev.some((selectedId) => String(selectedId) === String(id)),
+                                          ),
+                                        ]
+                                  ));
+                                }}
+                                type="button"
+                              >
+                                {csvFilteredRecords.length > 0
+                                  && csvFilteredRecords.every((record) =>
+                                    csvSelectedIds.some(
+                                      (selectedId) => String(selectedId) === String(record.id),
+                                    ),
+                                  )
+                                  ? "Clear visible"
+                                  : "Select visible"}
+                              </button>
+                            </div>
+
+                            <div className="invoice-select-scroll">
+                              {csvFilteredRecords.length === 0 ? (
+                                <p className="empty-state">
+                                  {records.length === 0
+                                    ? "No records available."
+                                    : "No records match your search/filters."}
+                                </p>
+                              ) : (
+                                csvFilteredRecords.map((record) => (
+                                  <label className="invoice-select-row" key={record.id}>
+                                    <input
+                                      checked={csvSelectedIds.some(
+                                        (selectedId) => String(selectedId) === String(record.id),
+                                      )}
+                                      onChange={() => toggleCsvSelection(record.id)}
+                                      type="checkbox"
+                                    />
+                                    <span>
+                                      {activeConfig.columns.slice(0, 4).map(([key], index) => {
+                                        const value = formatCsvCell(record, key);
+                                        return (
+                                          <span key={key}>
+                                            {index > 0 ? " · " : ""}
+                                            {value || "—"}
+                                          </span>
+                                        );
+                                      })}
+                                    </span>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       <div className="form-actions">
                         <button
@@ -2180,13 +2380,87 @@ async function handleDeleteSelected() {
                         </button>
                         <button
                           className="csv-download-button"
-                          disabled={isExportingCsv || csvSelectedIds.length === 0}
+                          disabled={
+                            isExportingCsv
+                            || csvSelectedColumns.length === 0
+                            || (
+                              activeSection === "dailyInputs"
+                              && (!csvBillDateFrom || !csvBillDateTo)
+                            )
+                          }
                           type="submit"
                         >
-                          {isExportingCsv ? "Downloading…" : "Download CSV"}
+                          {isExportingCsv ? "Opening…" : "Open CSV"}
                         </button>
                       </div>
                     </form>
+                  </div>
+                </div>
+              )}
+
+              {csvPreview && (
+                <div
+                  aria-labelledby="csv-preview-title"
+                  aria-modal="true"
+                  className="modal-overlay csv-preview-overlay"
+                  role="presentation"
+                >
+                  <div
+                    className="modal-dialog csv-preview-dialog"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                  >
+                    <div className="csv-preview-toolbar no-print">
+                      <div className="record-form-heading">
+                        <h2 id="csv-preview-title">{csvPreview.title}</h2>
+                        <p>{csvPreview.subtitle}</p>
+                      </div>
+                      <div className="form-actions">
+                        <button
+                          className="secondary-action"
+                          onClick={closeCsvPreview}
+                          type="button"
+                        >
+                          Close
+                        </button>
+                        <button
+                          className="csv-download-button"
+                          onClick={handlePrintCsvPreview}
+                          type="button"
+                        >
+                          Print
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="csv-preview-sheet" id="csv-print-area">
+                      <div className="csv-preview-print-heading">
+                        <h1>{csvPreview.title}</h1>
+                        <p>{csvPreview.subtitle}</p>
+                      </div>
+                      <div className="csv-preview-table-wrap">
+                        <table className="csv-preview-table">
+                          <thead>
+                            <tr>
+                              {csvPreview.columnLabels.map((label) => (
+                                <th key={label}>{label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {csvPreview.rows.map((row, rowIndex) => (
+                              <tr key={`csv-row-${rowIndex}`}>
+                                {row.map((cell, cellIndex) => (
+                                  <td key={`csv-cell-${rowIndex}-${cellIndex}`}>
+                                    {cell || "—"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2215,36 +2489,6 @@ function Dashboard({
       count: counts[section.id] ?? 0,
       title: `Total ${section.label}`,
     }));
-  const [reportNotice, setReportNotice] = useState("");
-
-  function generateDailyReport() {
-    const reportDate = new Date().toLocaleDateString("en-CA");
-    const rows = [
-      ["Daily dashboard report", reportDate],
-      ["Role", user.role],
-      [],
-      ["Metric", "Count"],
-      ...kpiCards.map((card) => [
-        card.title,
-        counts[card.id] ?? "Not loaded",
-      ]),
-    ];
-    const csv = rows
-      .map((row) => row.map((value) => {
-        const cell = String(value ?? "");
-        return `"${cell.replaceAll('"', '""')}"`;
-      }).join(","))
-      .join("\r\n");
-    const file = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
-    const downloadUrl = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = `daily-report-${reportDate}.csv`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-    setReportNotice(`Daily report downloaded for ${reportDate}.`);
-  }
-
   return (
     <section aria-labelledby="page-title" className="section-page">
       <div className="page-heading dashboard-heading">
@@ -2255,14 +2499,6 @@ function Dashboard({
         </div>
         <div className="dashboard-heading-actions">
           <span className="role-badge">{user.role}</span>
-          <button
-            className="generate-report-button"
-            disabled={isLoading}
-            onClick={generateDailyReport}
-            type="button"
-          >
-            Generate daily report
-          </button>
           <button
             className="refresh-button"
             disabled={isLoading}
@@ -2275,7 +2511,6 @@ function Dashboard({
       </div>
 
       {pageError && <p className="workspace-error" role="alert">{pageError}</p>}
-      {reportNotice && <p className="workspace-notice" role="status">{reportNotice}</p>}
       <p
         className={`backend-status${backendStatus?.ok ? " connected" : " disconnected"}`}
         role="status"

@@ -20,7 +20,4 @@ contextBridge.exposeInMainWorld("desktop", {
     ),
   exportWorkspaceCsv: (section, columnLabels, rows) =>
     ipcRenderer.invoke("workspace:export-csv", section, columnLabels, rows),
-  generateInvoice: (payload) => ipcRenderer.invoke("invoices:generate", payload),
-  downloadInvoicePdf: (invoiceId) =>
-    ipcRenderer.invoke("invoices:download-pdf", invoiceId),
 });

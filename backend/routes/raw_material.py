@@ -9,6 +9,7 @@ from db.database import get_db
 from models.raw_material import RawMaterial
 from routes.user import require_roles
 from schemas.raw_material_schema import RawMaterialCreate, RawMaterialRead, RawMaterialUpdate
+from services.daily_input_sync import sync_daily_inputs_for_raw_material
 
 router = APIRouter(tags=["raw materials"])
 
@@ -73,6 +74,7 @@ def edit_raw_material(
     for field, value in changes.items():
         setattr(material, field, value)
     material.updated_at = datetime.now(timezone.utc)
+    sync_daily_inputs_for_raw_material(db, material)
     try:
         db.commit()
     except IntegrityError as error:

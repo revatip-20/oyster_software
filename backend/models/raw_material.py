@@ -20,6 +20,7 @@ class RawMaterial(Base):
 
     material_name = Column(String(150), nullable=False)
     unit = Column(String(30), nullable=False)
+    hsn_code = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")
     deleted_at = Column(DateTime(timezone=True), nullable=True)
