@@ -310,11 +310,108 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_code ON supplier(code);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_code ON customer(code);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_code ON users(code);
 
+CREATE OR REPLACE FUNCTION set_next_raw_material_code() RETURNS TRIGGER AS $$
+DECLARE
+    max_num BIGINT;
+    next_num BIGINT;
+BEGIN
+    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+        INTO max_num
+        FROM raw_material
+        WHERE code ~ '^R[0-9]+$';
+
+        next_num := max_num + 1;
+        NEW.code := 'R' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trigger_set_raw_material_code ON raw_material;
+CREATE TRIGGER trigger_set_raw_material_code
+BEFORE INSERT ON raw_material
+FOR EACH ROW EXECUTE FUNCTION set_next_raw_material_code();
+
+CREATE OR REPLACE FUNCTION set_next_element_code() RETURNS TRIGGER AS $$
+DECLARE
+    max_num BIGINT;
+    next_num BIGINT;
+BEGIN
+    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+        INTO max_num
+        FROM element
+        WHERE code ~ '^E[0-9]+$';
+
+        next_num := max_num + 1;
+        NEW.code := 'E' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trigger_set_element_code ON element;
+CREATE TRIGGER trigger_set_element_code
+BEFORE INSERT ON element
+FOR EACH ROW EXECUTE FUNCTION set_next_element_code();
+
+CREATE OR REPLACE FUNCTION set_next_supplier_code() RETURNS TRIGGER AS $$
+DECLARE
+    max_num BIGINT;
+    next_num BIGINT;
+BEGIN
+    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+        INTO max_num
+        FROM supplier
+        WHERE code ~ '^S[0-9]+$';
+
+        next_num := max_num + 1;
+        NEW.code := 'S' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trigger_set_supplier_code ON supplier;
+CREATE TRIGGER trigger_set_supplier_code
+BEFORE INSERT ON supplier
+FOR EACH ROW EXECUTE FUNCTION set_next_supplier_code();
+
+CREATE OR REPLACE FUNCTION set_next_customer_code() RETURNS TRIGGER AS $$
+DECLARE
+    max_num BIGINT;
+    next_num BIGINT;
+BEGIN
+    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+        INTO max_num
+        FROM customer
+        WHERE code ~ '^CUST[0-9]+$';
+
+        next_num := max_num + 1;
+        NEW.code := 'CUST' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trigger_set_customer_code ON customer;
+CREATE TRIGGER trigger_set_customer_code
+BEFORE INSERT ON customer
+FOR EACH ROW EXECUTE FUNCTION set_next_customer_code();
+
 CREATE OR REPLACE FUNCTION set_employee_code()
 RETURNS TRIGGER AS $$
+DECLARE
+    max_num BIGINT;
+    next_num BIGINT;
 BEGIN
-    IF NEW.role = 'employee' AND NEW.code IS NULL THEN
-        NEW.code := format_resource_code('EMP', nextval('employee_code_seq'));
+    IF NEW.role = 'employee' AND (NEW.code IS NULL OR TRIM(NEW.code) = '') THEN
+        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+        INTO max_num
+        FROM users
+        WHERE code ~ '^EMP[0-9]+$';
+
+        next_num := max_num + 1;
+        NEW.code := 'EMP' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
     END IF;
     RETURN NEW;
 END;
@@ -334,3 +431,70 @@ CREATE INDEX IF NOT EXISTS idx_raw_material_supplier ON raw_material(supplier_id
 CREATE INDEX IF NOT EXISTS idx_daily_input_dc_date ON daily_input("DC_date");
 CREATE INDEX IF NOT EXISTS idx_daily_input_raw_material ON daily_input(raw_material_id);
 CREATE INDEX IF NOT EXISTS idx_daily_input_element ON daily_input(element_id);
+
+-- Make all fields non-compulsory across all tables
+ALTER TABLE users ALTER COLUMN first_name DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN last_name DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN phone DROP NOT NULL;
+
+ALTER TABLE customer ALTER COLUMN company_name DROP NOT NULL;
+ALTER TABLE customer ALTER COLUMN contact_person DROP NOT NULL;
+ALTER TABLE customer ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE customer ALTER COLUMN phone DROP NOT NULL;
+ALTER TABLE customer ALTER COLUMN address DROP NOT NULL;
+ALTER TABLE customer ALTER COLUMN city DROP NOT NULL;
+ALTER TABLE customer ALTER COLUMN state DROP NOT NULL;
+
+ALTER TABLE supplier ALTER COLUMN company_name DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN contact_person DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN phone DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN address DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN city DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN state DROP NOT NULL;
+ALTER TABLE supplier ALTER COLUMN gst_number DROP NOT NULL;
+
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(20);
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS rate NUMERIC(12, 2) DEFAULT 0;
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS cgst_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS ut_sgst_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS igst_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE raw_material ALTER COLUMN material_name DROP NOT NULL;
+ALTER TABLE raw_material ALTER COLUMN unit DROP NOT NULL;
+ALTER TABLE raw_material ALTER COLUMN rate DROP NOT NULL;
+ALTER TABLE raw_material ALTER COLUMN discount_percent DROP NOT NULL;
+ALTER TABLE raw_material ALTER COLUMN cgst_percent DROP NOT NULL;
+ALTER TABLE raw_material ALTER COLUMN ut_sgst_percent DROP NOT NULL;
+ALTER TABLE raw_material ALTER COLUMN igst_percent DROP NOT NULL;
+
+ALTER TABLE element ALTER COLUMN element_name DROP NOT NULL;
+ALTER TABLE element ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(20);
+ALTER TABLE element ADD COLUMN IF NOT EXISTS rate NUMERIC(12, 2) DEFAULT 0;
+ALTER TABLE element ADD COLUMN IF NOT EXISTS cgst_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE element ADD COLUMN IF NOT EXISTS ut_sgst_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE element ADD COLUMN IF NOT EXISTS igst_percent NUMERIC(5, 2) DEFAULT 0;
+
+ALTER TABLE daily_input ALTER COLUMN "DC_no" DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN "DC_date" DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN bill_no DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN quantity DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN type DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN amount DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN cgst_amount DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN ut_sgst_amount DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN igst_amount DROP NOT NULL;
+ALTER TABLE daily_input ALTER COLUMN total_amount DROP NOT NULL;
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS unit VARCHAR(30);
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS rate NUMERIC(12, 2);
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE daily_input ALTER COLUMN discount_percent DROP NOT NULL;
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(20);
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS other_details JSONB;
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS remarks TEXT;
+ALTER TABLE daily_input DROP CONSTRAINT IF EXISTS daily_input_type_check;
+ALTER TABLE daily_input ADD CONSTRAINT daily_input_type_check CHECK (type IS NULL OR type IN ('raw_material', 'element', 'other'));
+
+ALTER TABLE product ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150);
+ALTER TABLE product ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE;

@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld("desktop", {
     ),
   exportWorkspaceCsv: (section, columnLabels, rows) =>
     ipcRenderer.invoke("workspace:export-csv", section, columnLabels, rows),
+  exportWorkspacePdf: (section, htmlContent, title) =>
+    ipcRenderer.invoke("workspace:export-pdf", section, htmlContent, title),
+  openPrintPreview: (htmlContent, title) =>
+    ipcRenderer.invoke("workspace:print-preview", htmlContent, title),
 });

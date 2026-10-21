@@ -17,9 +17,314 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+def _ensure_sequences_and_functions(connection) -> None:
+    for sequence_name in (
+        "product_code_seq",
+        "element_code_seq",
+        "raw_material_code_seq",
+        "employee_code_seq",
+        "supplier_code_seq",
+        "customer_code_seq",
+        "cost_data_code_seq",
+    ):
+        connection.execute(
+            text(f"CREATE SEQUENCE IF NOT EXISTS {sequence_name} START WITH 1")
+        )
+
+    connection.execute(
+        text(
+            "CREATE OR REPLACE FUNCTION format_resource_code("
+            "code_prefix TEXT, sequence_value BIGINT) "
+            "RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $$ "
+            "SELECT code_prefix || LPAD(sequence_value::TEXT, "
+            "GREATEST(4, LENGTH(sequence_value::TEXT)), '0') $$"
+        )
+    )
+
+
+def _ensure_table_triggers(connection) -> None:
+    # Trigger for raw_material
+    try:
+        connection.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION set_next_raw_material_code() RETURNS TRIGGER AS $$
+                DECLARE
+                    max_num BIGINT;
+                    next_num BIGINT;
+                BEGIN
+                    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+                        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+                        INTO max_num
+                        FROM raw_material
+                        WHERE code ~ '^R[0-9]+$';
+
+                        next_num := max_num + 1;
+                        NEW.code := 'R' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS trigger_set_raw_material_code ON raw_material;
+                CREATE TRIGGER trigger_set_raw_material_code
+                BEFORE INSERT ON raw_material
+                FOR EACH ROW EXECUTE FUNCTION set_next_raw_material_code();
+                """
+            )
+        )
+    except Exception:
+        pass
+
+    # Trigger for product
+    try:
+        connection.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION set_next_product_code() RETURNS TRIGGER AS $$
+                DECLARE
+                    max_num BIGINT;
+                    next_num BIGINT;
+                BEGIN
+                    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+                        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+                        INTO max_num
+                        FROM product
+                        WHERE code ~ '^P[0-9]+$';
+
+                        next_num := max_num + 1;
+                        NEW.code := 'P' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS trigger_set_product_code ON product;
+                CREATE TRIGGER trigger_set_product_code
+                BEFORE INSERT ON product
+                FOR EACH ROW EXECUTE FUNCTION set_next_product_code();
+                """
+            )
+        )
+    except Exception:
+        pass
+
+    # Trigger for supplier
+    try:
+        connection.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION set_next_supplier_code() RETURNS TRIGGER AS $$
+                DECLARE
+                    max_num BIGINT;
+                    next_num BIGINT;
+                BEGIN
+                    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+                        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+                        INTO max_num
+                        FROM supplier
+                        WHERE code ~ '^S[0-9]+$';
+
+                        next_num := max_num + 1;
+                        NEW.code := 'S' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS trigger_set_supplier_code ON supplier;
+                CREATE TRIGGER trigger_set_supplier_code
+                BEFORE INSERT ON supplier
+                FOR EACH ROW EXECUTE FUNCTION set_next_supplier_code();
+                """
+            )
+        )
+    except Exception:
+        pass
+
+    # Trigger for customer
+    try:
+        connection.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION set_next_customer_code() RETURNS TRIGGER AS $$
+                DECLARE
+                    max_num BIGINT;
+                    next_num BIGINT;
+                BEGIN
+                    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+                        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+                        INTO max_num
+                        FROM customer
+                        WHERE code ~ '^CUST[0-9]+$';
+
+                        next_num := max_num + 1;
+                        NEW.code := 'CUST' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS trigger_set_customer_code ON customer;
+                CREATE TRIGGER trigger_set_customer_code
+                BEFORE INSERT ON customer
+                FOR EACH ROW EXECUTE FUNCTION set_next_customer_code();
+                """
+            )
+        )
+    except Exception:
+        pass
+
+    # Trigger for users (employee)
+    try:
+        connection.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION set_employee_code() RETURNS TRIGGER AS $$
+                DECLARE
+                    max_num BIGINT;
+                    next_num BIGINT;
+                BEGIN
+                    IF NEW.role = 'employee' AND (NEW.code IS NULL OR TRIM(NEW.code) = '') THEN
+                        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+                        INTO max_num
+                        FROM users
+                        WHERE code ~ '^EMP[0-9]+$';
+
+                        next_num := max_num + 1;
+                        NEW.code := 'EMP' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS users_set_employee_code ON users;
+                CREATE TRIGGER users_set_employee_code BEFORE INSERT ON users
+                FOR EACH ROW EXECUTE FUNCTION set_employee_code();
+                """
+            )
+        )
+    except Exception:
+        pass
+
+    # Trigger for cost_data
+    try:
+        connection.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION set_next_cost_data_code() RETURNS TRIGGER AS $$
+                DECLARE
+                    max_num BIGINT;
+                    next_num BIGINT;
+                BEGIN
+                    IF NEW.code IS NULL OR TRIM(NEW.code) = '' THEN
+                        SELECT COALESCE(MAX(SUBSTRING(code FROM '([0-9]+)$')::BIGINT), 0)
+                        INTO max_num
+                        FROM cost_data
+                        WHERE code ~ '^CD[0-9]+$';
+
+                        next_num := max_num + 1;
+                        NEW.code := 'CD' || LPAD(next_num::TEXT, GREATEST(4, LENGTH(next_num::TEXT)), '0');
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS trigger_set_cost_data_code ON cost_data;
+                CREATE TRIGGER trigger_set_cost_data_code
+                BEFORE INSERT ON cost_data
+                FOR EACH ROW EXECUTE FUNCTION set_next_cost_data_code();
+                """
+            )
+        )
+    except Exception:
+        pass
+
+
+def _drop_not_null_constraints(connection) -> None:
+    ddl_statements = [
+        "ALTER TABLE users ALTER COLUMN first_name DROP NOT NULL",
+        "ALTER TABLE users ALTER COLUMN last_name DROP NOT NULL",
+        "ALTER TABLE users ALTER COLUMN email DROP NOT NULL",
+        "ALTER TABLE users ALTER COLUMN phone DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN company_name DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN contact_person DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN email DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN phone DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN address DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN city DROP NOT NULL",
+        "ALTER TABLE customer ALTER COLUMN state DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN company_name DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN contact_person DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN email DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN phone DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN address DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN city DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN state DROP NOT NULL",
+        "ALTER TABLE supplier ALTER COLUMN gst_number DROP NOT NULL",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(20)",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS rate NUMERIC(12, 2) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS cgst_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS ut_sgst_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS igst_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE raw_material ALTER COLUMN material_name DROP NOT NULL",
+        "ALTER TABLE raw_material ALTER COLUMN unit DROP NOT NULL",
+        "ALTER TABLE raw_material ALTER COLUMN rate DROP NOT NULL",
+        "ALTER TABLE raw_material ALTER COLUMN discount_percent DROP NOT NULL",
+        "ALTER TABLE raw_material ALTER COLUMN cgst_percent DROP NOT NULL",
+        "ALTER TABLE raw_material ALTER COLUMN ut_sgst_percent DROP NOT NULL",
+        "ALTER TABLE raw_material ALTER COLUMN igst_percent DROP NOT NULL",
+        "ALTER TABLE daily_input DROP CONSTRAINT IF EXISTS daily_input_element_id_fkey",
+        "DROP TABLE IF EXISTS element CASCADE",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES product(id) ON DELETE SET NULL",
+        'ALTER TABLE daily_input ALTER COLUMN "DC_no" DROP NOT NULL',
+        'ALTER TABLE daily_input ALTER COLUMN "DC_date" DROP NOT NULL',
+        "ALTER TABLE daily_input ALTER COLUMN bill_no DROP NOT NULL",
+        "ALTER TABLE daily_input ALTER COLUMN quantity DROP NOT NULL",
+        "ALTER TABLE daily_input ALTER COLUMN type DROP NOT NULL",
+        "ALTER TABLE daily_input ALTER COLUMN amount DROP NOT NULL",
+        "ALTER TABLE daily_input ALTER COLUMN cgst_amount DROP NOT NULL",
+        "ALTER TABLE daily_input ALTER COLUMN ut_sgst_amount DROP NOT NULL",
+        "ALTER TABLE daily_input ALTER COLUMN igst_amount DROP NOT NULL",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS unit VARCHAR(30)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS rate NUMERIC(12, 2)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE daily_input ALTER COLUMN discount_percent DROP NOT NULL",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(20)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS other_details JSONB",
+        "ALTER TABLE daily_input DROP CONSTRAINT IF EXISTS daily_input_type_check",
+        "ALTER TABLE daily_input ADD CONSTRAINT daily_input_type_check CHECK (type IS NULL OR type IN ('raw_material', 'product', 'element', 'other'))",
+        "ALTER TABLE cost_data ALTER COLUMN wound_cap_basic_value DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN mpp_film_width DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN mpp_film_thickness DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN core_od DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN film_free_margin DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN winding_stagger DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN wound_capacitor_od DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN turns_to_be_wound DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN active_width DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN band_length DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN wt_of_capacitor DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN wound_cap_element_value DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN pp_film_width DROP NOT NULL",
+        "ALTER TABLE cost_data ALTER COLUMN pp_film_thickness DROP NOT NULL",
+        "ALTER TABLE cost_data ADD COLUMN IF NOT EXISTS type VARCHAR(50)",
+        "ALTER TABLE cost_data ALTER COLUMN type DROP NOT NULL",
+        "ALTER TABLE cost_data DROP CONSTRAINT IF EXISTS cost_data_type_check",
+        "ALTER TABLE cost_data ADD CONSTRAINT cost_data_type_check CHECK (type IS NULL OR type IN ('Basic', 'Element', 'basic', 'element'))",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS raw_material_ids JSONB",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS element_id INTEGER REFERENCES product(id) ON DELETE SET NULL",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS welded_element_id INTEGER REFERENCES product(id) ON DELETE SET NULL",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE",
+        "CREATE TABLE IF NOT EXISTS product_raw_material (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES product(id) ON DELETE CASCADE, raw_material_id INTEGER NOT NULL REFERENCES raw_material(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), CONSTRAINT uq_product_raw_material UNIQUE (product_id, raw_material_id))",
+        "ALTER TABLE product_raw_material ADD COLUMN IF NOT EXISTS quantity NUMERIC(12, 4) DEFAULT 1",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS remarks TEXT",
+    ]
+    for stmt in ddl_statements:
+        try:
+            connection.execute(text(stmt))
+        except Exception:
+            pass
+
+
 def initialize_database():
     from security import hash_password
-    from migrations.runner import run_migrations
 
     admin_password = os.getenv("ADMIN_PASSWORD", "")
     jwt_secret = os.getenv("JWT_SECRET_KEY", "")
@@ -28,9 +333,14 @@ def initialize_database():
     if len(jwt_secret) < 32:
         raise RuntimeError("Set JWT_SECRET_KEY to at least 32 characters in .env")
 
-    run_migrations(engine)
+    # Import models so Base.metadata is populated before create_all.
+    from models import CostData, Customer, DailyInput, Product, ProductRawMaterial, RawMaterial, Supplier, User  # noqa: F401
 
-    from models.user import User
+    with engine.begin() as connection:
+        _ensure_sequences_and_functions(connection)
+        Base.metadata.create_all(bind=connection)
+        _drop_not_null_constraints(connection)
+        _ensure_table_triggers(connection)
 
     admin_id = int(os.environ["ADMIN_ID"])
     if admin_id < 1:

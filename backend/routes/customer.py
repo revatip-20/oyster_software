@@ -7,6 +7,7 @@ from db.database import get_db
 from models.customer import Customer
 from routes.user import require_roles
 from schemas.customer_schema import CustomerCreate, CustomerRead, CustomerUpdate
+from services.code_generator import get_next_resource_code
 from sqlalchemy import select
 
 router = APIRouter(tags=["customers"])
@@ -32,7 +33,9 @@ def get_customers(db: Session = Depends(get_db)):
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
 def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
-    new_customer = Customer(**customer.model_dump())
+    data = customer.model_dump()
+    code = get_next_resource_code(db, Customer, Customer.code, "CUST")
+    new_customer = Customer(code=code, **data)
     db.add(new_customer)
     db.commit()
     db.refresh(new_customer)
@@ -55,8 +58,6 @@ def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depend
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if any(value is None for value in changes.values()):
-        raise HTTPException(status_code=422, detail="Customer fields cannot be null")
 
     for field, value in changes.items():
         setattr(customer, field, value)

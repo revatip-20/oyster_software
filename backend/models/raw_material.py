@@ -10,16 +10,16 @@ class RawMaterial(Base):
     id = Column(Integer, primary_key=True, index=True)
     code = Column(
         String(80),
-        nullable=False,
-        server_default=text("format_resource_code('R', nextval('raw_material_code_seq'))"),
+        nullable=True,
     )
-    rate = Column(Numeric(12, 2), nullable=False, server_default=text("0"))
-    cgst_percent = Column(Numeric(5, 2), nullable=False, server_default=text("0"))
-    ut_sgst_percent = Column(Numeric(5, 2), nullable=False, server_default=text("0"))
-    igst_percent = Column(Numeric(5, 2), nullable=False, server_default=text("0"))
+    rate = Column(Numeric(12, 2), nullable=True, server_default=text("0"))
+    discount_percent = Column(Numeric(5, 2), nullable=True, server_default=text("0"))
+    cgst_percent = Column(Numeric(5, 2), nullable=True, server_default=text("0"))
+    ut_sgst_percent = Column(Numeric(5, 2), nullable=True, server_default=text("0"))
+    igst_percent = Column(Numeric(5, 2), nullable=True, server_default=text("0"))
 
-    material_name = Column(String(150), nullable=False)
-    unit = Column(String(30), nullable=False)
+    material_name = Column(String(150), nullable=True)
+    unit = Column(String(30), nullable=True)
     hsn_code = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")

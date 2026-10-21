@@ -1,1 +1,3 @@
-"""Versioned database migrations."""
+"""
+Database migrations package.
+"""

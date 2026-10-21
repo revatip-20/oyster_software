@@ -7,6 +7,7 @@ from db.database import get_db
 from models.supplier import Supplier
 from routes.user import require_roles
 from schemas.supplier_schema import SupplierCreate, SupplierRead, SupplierUpdate
+from services.code_generator import get_next_resource_code
 from sqlalchemy import select
 
 router = APIRouter(tags=["suppliers"])
@@ -32,7 +33,9 @@ def get_suppliers(db: Session = Depends(get_db)):
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
 def add_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
-    new_supplier = Supplier(**supplier.model_dump())
+    data = supplier.model_dump()
+    code = get_next_resource_code(db, Supplier, Supplier.code, "S")
+    new_supplier = Supplier(code=code, **data)
     db.add(new_supplier)
     db.commit()
     db.refresh(new_supplier)
@@ -55,8 +58,6 @@ def edit_supplier(supplier_id: int, update: SupplierUpdate, db: Session = Depend
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if any(value is None for value in changes.values()):
-        raise HTTPException(status_code=422, detail="Supplier fields cannot be null")
 
     for field, value in changes.items():
         setattr(supplier, field, value)

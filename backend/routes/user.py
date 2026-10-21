@@ -27,6 +27,7 @@ from security import (
     hash_password,
     verify_password,
 )
+from services.code_generator import get_next_resource_code
 
 router = APIRouter(prefix="/users", tags=["users"])
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -75,16 +76,23 @@ def create_user(
     password: str | None = None,
     joining_date: date | None = None,
 ) -> User:
-    existing_user = db.query(User).filter(User.email == user.email).first()
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
+    email = user.email.strip() if (user.email and str(user.email).strip()) else None
+    if email:
+        existing_user = db.query(User).filter(User.email == email).first()
+        if existing_user:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
+
+    code = None
+    if role == "employee":
+        code = get_next_resource_code(db, User, User.code, "EMP")
 
     new_user = User(
+        code=code,
         first_name=user.first_name,
         last_name=user.last_name,
-        email=user.email,
+        email=email,
         phone=user.phone,
-        password_hash=hash_password(password) if password else None,
+        password_hash=hash_password(password) if (password and str(password).strip()) else None,
         role=role,
         joining_date=joining_date,
     )
@@ -224,13 +232,14 @@ def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = Depend
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
     password = changes.pop("password", None)
-    if any(changes.get(field) is None for field in ("first_name", "last_name", "email", "phone") if field in changes):
-        raise HTTPException(status_code=422, detail="Required fields cannot be null")
-    if "email" in changes and db.query(User.id).filter(
-        User.email == changes["email"],
-        User.id != user_id,
-    ).first():
-        raise HTTPException(status_code=409, detail="Email is already registered")
+    if "email" in changes:
+        email = changes["email"].strip() if (changes["email"] and str(changes["email"]).strip()) else None
+        changes["email"] = email
+        if email and db.query(User.id).filter(
+            User.email == email,
+            User.id != user_id,
+        ).first():
+            raise HTTPException(status_code=409, detail="Email is already registered")
 
     for field, value in changes.items():
         setattr(supervisor, field, value)
@@ -285,13 +294,14 @@ def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depends(ge
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if any(changes.get(field) is None for field in ("first_name", "last_name", "email", "phone") if field in changes):
-        raise HTTPException(status_code=422, detail="Required fields cannot be null")
-    if "email" in changes and db.query(User.id).filter(
-        User.email == changes["email"],
-        User.id != user_id,
-    ).first():
-        raise HTTPException(status_code=409, detail="Email is already registered")
+    if "email" in changes:
+        email = changes["email"].strip() if (changes["email"] and str(changes["email"]).strip()) else None
+        changes["email"] = email
+        if email and db.query(User.id).filter(
+            User.email == email,
+            User.id != user_id,
+        ).first():
+            raise HTTPException(status_code=409, detail="Email is already registered")
 
     for field, value in changes.items():
         setattr(employee, field, value)

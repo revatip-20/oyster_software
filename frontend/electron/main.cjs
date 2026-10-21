@@ -184,12 +184,19 @@ const workspaceSections = {
     updatePath: (id) => `/raw-materials/${id}`,
     deletePath: (id) => `/raw-materials/${id}`,
   },
-  elements: {
+  products: {
     roles: ["admin", "supervisor"],
-    listPath: "/get-elements",
-    createPath: "/elements/",
-    updatePath: (id) => `/elements/${id}`,
-    deletePath: (id) => `/elements/${id}`,
+    listPath: "/get-products",
+    createPath: "/products/",
+    updatePath: (id) => `/products/${id}`,
+    deletePath: (id) => `/products/${id}`,
+  },
+  costData: {
+    roles: ["admin", "supervisor"],
+    listPath: "/get-cost-data",
+    createPath: "/cost-data/",
+    updatePath: (id) => `/cost-data/${id}`,
+    deletePath: (id) => `/cost-data/${id}`,
   },
   suppliers: {
     roles: ["admin", "supervisor"],
@@ -477,6 +484,322 @@ ipcMain.handle("workspace:export-csv", async (event, section, columnLabels, rows
     return { ok: true, filePath, count: rows.length };
   } catch {
     return { ok: false, error: "Unable to save the CSV file." };
+  }
+});
+
+ipcMain.handle("workspace:export-pdf", async (event, section, htmlContent, title) => {
+  if (!authenticatedSession) {
+    return { ok: false, sessionExpired: true, error: "Please sign in again." };
+  }
+  if (!canAccessSection(section)) {
+    return { ok: false, error: "You do not have permission to export this section." };
+  }
+  if (!htmlContent || typeof htmlContent !== "string") {
+    return { ok: false, error: "No document content provided for PDF export." };
+  }
+
+  const defaultFileName = `${section || "document"}-invoice-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const options = {
+    title: `Save ${title || "Invoice"} as PDF`,
+    defaultPath: path.join(app.getPath("downloads"), defaultFileName),
+    filters: [{ name: "PDF files", extensions: ["pdf"] }],
+  };
+
+  try {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const { canceled, filePath } = parentWindow
+      ? await dialog.showSaveDialog(parentWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (canceled || !filePath) return { ok: true, canceled: true };
+
+    const printWin = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+      },
+    });
+
+    await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+    const pdfBuffer = await printWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "A4",
+      landscape: true,
+      margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+    });
+    printWin.destroy();
+
+    await fs.writeFile(filePath, pdfBuffer);
+    return { ok: true, filePath };
+  } catch {
+    return { ok: false, error: "Unable to generate and save the PDF file." };
+  }
+});
+
+ipcMain.handle("workspace:print-preview", async (event, htmlContent, title) => {
+  if (!authenticatedSession) {
+    return { ok: false, sessionExpired: true, error: "Please sign in again." };
+  }
+  if (!htmlContent || typeof htmlContent !== "string") {
+    return { ok: false, error: "No document content provided for print preview." };
+  }
+
+  const escapeHtmlText = (text) => {
+    if (text === null || text === undefined) return "";
+    return String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  };
+
+  const fullPreviewHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Print Preview - ${escapeHtmlText(title || "Invoice")}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .preview-toolbar {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .preview-toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .preview-badge {
+      background: #2563eb;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .preview-doc-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+    .preview-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .preview-btn {
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .preview-btn-print {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #1d4ed8;
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .preview-btn-print:hover {
+      background: #1d4ed8;
+    }
+    .preview-btn-secondary {
+      background: #334155;
+      color: #e2e8f0;
+      border-color: #475569;
+    }
+    .preview-btn-secondary:hover {
+      background: #475569;
+      color: #ffffff;
+    }
+    .preview-zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #0f172a;
+      padding: 3px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+    }
+    .preview-zoom-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .preview-zoom-btn:hover {
+      color: #f8fafc;
+      background: #1e293b;
+    }
+    .preview-zoom-btn.active {
+      color: #ffffff;
+      background: #334155;
+      font-weight: 600;
+    }
+    .preview-container {
+      flex: 1;
+      overflow: auto;
+      background: #0f172a;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .preview-paper {
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      border-radius: 2px;
+      padding: 12mm 15mm;
+      width: 297mm;
+      min-height: 210mm;
+      box-sizing: border-box;
+      transform-origin: top center;
+      transition: transform 0.2s ease;
+    }
+
+    @media print {
+      .preview-toolbar {
+        display: none !important;
+      }
+      body {
+        background: transparent !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+      }
+      .preview-container {
+        padding: 0 !important;
+        background: transparent !important;
+        display: block !important;
+      }
+      .preview-paper {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        min-height: auto !important;
+        transform: none !important;
+      }
+      @page {
+        size: A4 landscape;
+        margin: 10mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-toolbar">
+    <div class="preview-toolbar-title">
+      <span class="preview-badge">Print Preview</span>
+      <span class="preview-doc-title">${escapeHtmlText(title || "Invoice")}</span>
+    </div>
+    <div class="preview-zoom-controls">
+      <button class="preview-zoom-btn" onclick="setZoom(0.75)">75%</button>
+      <button class="preview-zoom-btn active" id="zoom-100" onclick="setZoom(1.0)">100%</button>
+      <button class="preview-zoom-btn" onclick="setZoom(1.25)">125%</button>
+      <button class="preview-zoom-btn" onclick="fitWidth()">Fit Width</button>
+    </div>
+    <div class="preview-toolbar-actions">
+      <button class="preview-btn preview-btn-secondary" onclick="window.close()">Close</button>
+      <button class="preview-btn preview-btn-print" onclick="window.print()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+        Print
+      </button>
+    </div>
+  </div>
+
+  <div class="preview-container" id="preview-container">
+    <div class="preview-paper" id="preview-paper">
+      ${htmlContent}
+    </div>
+  </div>
+
+  <script>
+    let currentZoom = 1.0;
+    const paper = document.getElementById("preview-paper");
+    const container = document.getElementById("preview-container");
+
+    function setZoom(val) {
+      currentZoom = val;
+      paper.style.transform = "scale(" + val + ")";
+      document.querySelectorAll(".preview-zoom-btn").forEach(btn => btn.classList.remove("active"));
+      if (val === 1.0) {
+        document.getElementById("zoom-100").classList.add("active");
+      }
+    }
+
+    function fitWidth() {
+      const containerWidth = container.clientWidth - 60;
+      const paperWidth = paper.offsetWidth || 1122;
+      const ratio = Math.min(1.2, Math.max(0.4, containerWidth / paperWidth));
+      setZoom(Math.round(ratio * 100) / 100);
+    }
+  </script>
+</body>
+</html>`;
+
+  try {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const previewWindow = new BrowserWindow({
+      parent: parentWindow || undefined,
+      width: 1180,
+      height: 860,
+      minWidth: 800,
+      minHeight: 500,
+      title: `Print Preview - ${title || "Document"}`,
+      backgroundColor: "#0f172a",
+      autoHideMenuBar: true,
+      webPreferences: {
+        sandbox: false,
+        contextIsolation: false,
+      },
+    });
+
+    const tempPath = path.join(app.getPath("temp"), `print-preview-${Date.now()}.html`);
+    await fs.writeFile(tempPath, fullPreviewHtml, "utf8");
+    await previewWindow.loadFile(tempPath);
+
+    previewWindow.on("closed", () => {
+      fs.unlink(tempPath).catch(() => {});
+    });
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Unable to open print preview." };
   }
 });
 

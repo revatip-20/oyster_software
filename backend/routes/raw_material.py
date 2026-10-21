@@ -9,7 +9,7 @@ from db.database import get_db
 from models.raw_material import RawMaterial
 from routes.user import require_roles
 from schemas.raw_material_schema import RawMaterialCreate, RawMaterialRead, RawMaterialUpdate
-from services.daily_input_sync import sync_daily_inputs_for_raw_material
+from services.code_generator import get_next_resource_code
 
 router = APIRouter(tags=["raw materials"])
 
@@ -34,7 +34,9 @@ def get_raw_materials(db: Session = Depends(get_db)):
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
 def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db)):
-    new_material = RawMaterial(**material.model_dump())
+    data = material.model_dump()
+    code = get_next_resource_code(db, RawMaterial, RawMaterial.code, "R")
+    new_material = RawMaterial(code=code, **data)
     db.add(new_material)
     try:
         db.commit()
@@ -68,13 +70,9 @@ def edit_raw_material(
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
-    if any(changes.get(field) is None for field in ("material_name", "unit") if field in changes):
-        raise HTTPException(status_code=422, detail="Required fields cannot be null")
-
     for field, value in changes.items():
         setattr(material, field, value)
     material.updated_at = datetime.now(timezone.utc)
-    sync_daily_inputs_for_raw_material(db, material)
     try:
         db.commit()
     except IntegrityError as error:
