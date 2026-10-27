@@ -1,6 +1,64 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
 const fs = require("node:fs/promises");
+const nodeFs = require("node:fs");
 const path = require("node:path");
+
+// Load environment variables from .env file if present
+function loadEnv() {
+  const envPaths = [
+    path.join(__dirname, "..", ".env"),
+    path.join(process.cwd(), ".env"),
+    path.join(__dirname, "..", "..", ".env"),
+  ];
+
+  for (const envPath of envPaths) {
+    try {
+      if (nodeFs.existsSync(envPath)) {
+        const fileContent = nodeFs.readFileSync(envPath, "utf8");
+        for (const line of fileContent.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+          const eqIdx = trimmed.indexOf("=");
+          if (eqIdx !== -1) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+            if (
+              (val.startsWith('"') && val.endsWith('"')) ||
+              (val.startsWith("'") && val.endsWith("'"))
+            ) {
+              val = val.slice(1, -1);
+            }
+            if (process.env[key] === undefined) {
+              process.env[key] = val;
+            }
+          }
+        }
+        console.info(`[electron] Loaded environment variables from: ${envPath}`);
+        break;
+      }
+    } catch (err) {
+      console.warn(`[electron] Could not load .env from ${envPath}:`, err.message);
+    }
+  }
+}
+loadEnv();
+
+function getBackendApiUrl() {
+  let url =
+    process.env.BACKEND_API_URL ||
+    process.env.VITE_BACKEND_API_URL ||
+    process.env.BACKEND_URL ||
+    process.env.VITE_BACKEND_URL ||
+    "http://127.0.0.1:8000";
+
+  url = String(url).trim().replace(/\/+$/, "");
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = `http://${url}`;
+  }
+  return url;
+}
+
+console.info(`[electron] Backend API target URL: ${getBackendApiUrl()}`);
 
 ipcMain.handle("app:get-version", () => app.getVersion());
 
@@ -64,9 +122,7 @@ async function refreshAuthenticatedSession() {
     return { ok: false, sessionExpired: true, error: "Please sign in again." };
   }
 
-  const apiBaseUrl = (
-    process.env.BACKEND_API_URL || "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+  const apiBaseUrl = getBackendApiUrl();
 
   let response;
   try {
@@ -136,9 +192,7 @@ ipcMain.handle("auth:get-session", async () => {
 });
 
 ipcMain.handle("backend:status", async () => {
-  const apiBaseUrl = (
-    process.env.BACKEND_API_URL || "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+  const apiBaseUrl = getBackendApiUrl();
   try {
     const response = await fetch(`${apiBaseUrl}/`);
     if (!response.ok) {
@@ -222,9 +276,7 @@ const workspaceSections = {
 };
 
 async function requestWorkspaceApi(path, method, body) {
-  const apiBaseUrl = (
-    process.env.BACKEND_API_URL || "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+  const apiBaseUrl = getBackendApiUrl();
   const headers = {
     Authorization: `Bearer ${authenticatedSession.accessToken}`,
   };
@@ -804,9 +856,7 @@ ipcMain.handle("workspace:print-preview", async (event, htmlContent, title) => {
 });
 
 ipcMain.handle("auth:login", async (_event, credentials) => {
-  const apiBaseUrl = (
-    process.env.BACKEND_API_URL || "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+  const apiBaseUrl = getBackendApiUrl();
 
   let response;
   try {
