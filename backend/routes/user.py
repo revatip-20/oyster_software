@@ -33,7 +33,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -58,7 +58,7 @@ def get_current_user(
 
 
 def require_roles(*allowed_roles: str):
-    def check_role(current_user: User = Depends(get_current_user)) -> User:
+    async def check_role(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -103,7 +103,7 @@ def create_user(
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(
+async def login(
     credentials: LoginRequest,
     db: Session = Depends(get_db),
 ):
@@ -128,7 +128,7 @@ def login(
 
 
 @router.post("/refresh", response_model=LoginResponse)
-def refresh_access_token(
+async def refresh_access_token(
     request: RefreshRequest,
     db: Session = Depends(get_db),
 ):
@@ -160,7 +160,7 @@ def refresh_access_token(
     response_model=list[UserRead],
     dependencies=[Depends(require_roles("admin"))],
 )
-def get_supervisors(db: Session = Depends(get_db)):
+async def get_supervisors(db: Session = Depends(get_db)):
     return (
         db.query(User)
         .filter(User.role == "supervisor", User.deleted_at.is_(None))
@@ -179,7 +179,7 @@ def get_supervisors(db: Session = Depends(get_db)):
     response_model=list[UserRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def get_employees(db: Session = Depends(get_db)):
+async def get_employees(db: Session = Depends(get_db)):
     return (
         db.query(User)
         .filter(User.role == "employee", User.deleted_at.is_(None))
@@ -194,7 +194,7 @@ def get_employees(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin"))],
 )
-def add_supervisor(
+async def add_supervisor(
     user: UserCreate,
     db: Session = Depends(get_db),
 ):
@@ -207,7 +207,7 @@ def add_supervisor(
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def add_employee(
+async def add_employee(
     user: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
@@ -219,7 +219,7 @@ def add_employee(
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin"))],
 )
-def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = Depends(get_db)):
+async def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = Depends(get_db)):
     supervisor = db.query(User).filter(
         User.id == user_id,
         User.role == "supervisor",
@@ -260,7 +260,7 @@ def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = Depend
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin"))],
 )
-def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
+async def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
     supervisor = db.query(User).filter(
         User.id == user_id,
         User.role == "supervisor",
@@ -272,7 +272,11 @@ def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     supervisor.deleted_at = now
     supervisor.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(supervisor)
     return supervisor
 
@@ -282,7 +286,7 @@ def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depends(get_db)):
+async def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depends(get_db)):
     employee = db.query(User).filter(
         User.id == user_id,
         User.role == "employee",
@@ -320,7 +324,7 @@ def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depends(ge
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def delete_employee(user_id: int, db: Session = Depends(get_db)):
+async def delete_employee(user_id: int, db: Session = Depends(get_db)):
     employee = db.query(User).filter(
         User.id == user_id,
         User.role == "employee",
@@ -332,6 +336,10 @@ def delete_employee(user_id: int, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     employee.deleted_at = now
     employee.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(employee)
     return employee

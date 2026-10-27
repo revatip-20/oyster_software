@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { navigation, sections } from "./workspace.js";
+import React, { Component, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { navigation, sections, INDIAN_STATES } from "./workspace.js";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -134,6 +134,7 @@ function ProductRawMaterialsManager({
   isWireHighlight = false,
   onAddNewRawMaterial,
   initialSelectedMaterialId,
+  placeholderOverride = "",
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [pendingMaterialId, setPendingMaterialId] = useState("");
@@ -197,16 +198,20 @@ function ProductRawMaterialsManager({
     return rawMaterialMap.get(Number(pendingMaterialId));
   }, [pendingMaterialId, rawMaterialMap]);
 
-  // Filter raw materials based on search term
-  // Only show raw materials when searched, matching materials starting with the search query
+  // Filter raw materials based on search term (shows all raw materials when not searching)
   const filteredMaterials = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     let list = rawMaterials || [];
-    if (!q) return [];
+    if (!q) return list;
     return list.filter((rm) => {
       const name = String(rm.material_name || "").trim().toLowerCase();
       const code = String(rm.code || "").trim().toLowerCase();
-      return name.startsWith(q) || (code && code.startsWith(q));
+      const hsn = String(rm.hsn_code || "").trim().toLowerCase();
+      return (
+        name.includes(q) ||
+        (code && code.includes(q)) ||
+        (hsn && hsn.includes(q))
+      );
     });
   }, [searchTerm, rawMaterials]);
 
@@ -395,9 +400,7 @@ function ProductRawMaterialsManager({
               </span>
             ) : (
               <span className="prm-select-hint">
-                {searchTerm.trim()
-                  ? "Click any raw material below to select it"
-                  : "Search raw material to view and select"}
+                Click any raw material below to select it
               </span>
             )}
           </div>
@@ -410,7 +413,12 @@ function ProductRawMaterialsManager({
               <input
                 type="text"
                 className="prm-search-input"
-                placeholder={isWireHighlight ? "Search wires starting with (e.g. 'W')..." : "Search raw materials starting with (e.g. 'W')..."}
+                placeholder={
+                  placeholderOverride ||
+                  (isWireHighlight
+                    ? "Search wires by name or code..."
+                    : "Search raw materials by name or code...")
+                }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 disabled={disabled || isLoading}
@@ -485,7 +493,7 @@ function ProductRawMaterialsManager({
                   </>
                 ) : (
                   <>
-                    Search Raw Materials ({rawMaterials.length} available)
+                    Raw Materials (<strong>{rawMaterials.length}</strong> available)
                   </>
                 )}
               </span>
@@ -532,14 +540,19 @@ function ProductRawMaterialsManager({
                       </button>
                     </div>
                   ) : (
-                    <div className="prm-search-unsearched-prompt">
-                      <span className="prm-search-unsearched-icon">🔍</span>
-                      <p className="prm-search-unsearched-msg">
-                        Please type in the search box above to find raw materials.
-                      </p>
-                      <span className="prm-search-unsearched-sub">
-                        (e.g., search <strong>W</strong> for raw materials starting with <strong>W</strong>)
-                      </span>
+                    <div className="prm-empty-state" style={{ padding: "10px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>
+                      No raw materials found.
+                      {onAddNewRawMaterial && (
+                        <div style={{ marginTop: "8px" }}>
+                          <button
+                            type="button"
+                            className="prm-not-found-yes-btn"
+                            onClick={() => onAddNewRawMaterial("")}
+                          >
+                            + Add Raw Material
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -617,12 +630,14 @@ function DailyInputItemPicker({
 }) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Normalize selectedType ("raw_material" | "product" | "")
+  // Normalize selectedType ("raw_material" | "product" | "other" | "")
   const currentType =
     selectedType === "product" || selectedType === "element"
       ? "product"
       : selectedType === "raw_material"
       ? "raw_material"
+      : selectedType === "other"
+      ? "other"
       : "";
 
   // Reset search term when the dropdown type changes
@@ -676,17 +691,6 @@ function DailyInputItemPicker({
 
     const q = searchTerm.trim().toLowerCase();
 
-    // Raw material: do not show raw material unless searched!
-    // And only show raw materials starting with the search query (e.g. 'w')
-    if (currentType === "raw_material") {
-      if (!q) return [];
-      return list.filter((item) => {
-        const name = String(item.name || "").trim().toLowerCase();
-        const code = String(item.code || "").trim().toLowerCase();
-        return name.startsWith(q) || (code && code.startsWith(q));
-      });
-    }
-
     if (!q) return list;
 
     return list.filter((item) => {
@@ -716,10 +720,10 @@ function DailyInputItemPicker({
 
   return (
     <div className="di-picker-container">
-      {/* 1. SHOW THE DROP DOWN FIRST: RAW MATERIAL OR PRODUCT */}
+      {/* 1. SHOW THE DROP DOWN FIRST: RAW MATERIAL, PRODUCT, OR OTHER */}
       <div className="di-type-dropdown-section">
         <label className="di-type-dropdown-label" htmlFor="di-type-dropdown-select">
-          Select Item Type: <span className="di-select-only-one">Raw Material or Product</span> *
+          Select Item Type: <span className="di-select-only-one">Raw Material, Product, or Other</span> *
         </label>
         <div className="di-type-select-wrapper">
           <select
@@ -734,9 +738,10 @@ function DailyInputItemPicker({
             }}
             disabled={disabled}
           >
-            <option value="">-- Select Raw Material or Product --</option>
+            <option value="">-- Select Item Type --</option>
             <option value="raw_material">Raw Material</option>
             <option value="product">Product</option>
+            <option value="other">Other</option>
           </select>
         </div>
       </div>
@@ -747,7 +752,14 @@ function DailyInputItemPicker({
           <div className="di-box-empty-prompt">
             <span className="di-box-empty-icon">👆</span>
             <p className="di-box-empty-text">
-              Please select <strong>Raw Material</strong> or <strong>Product</strong> from the dropdown above to search items.
+              Please select <strong>Raw Material</strong>, <strong>Product</strong>, or <strong>Other</strong> from the dropdown above.
+            </p>
+          </div>
+        ) : currentType === "other" ? (
+          <div className="di-box-other-prompt">
+            <span className="di-box-empty-icon">📝</span>
+            <p className="di-box-empty-text">
+              <strong>Other / Custom Item</strong> selected. Please specify the item name, material details, and supplier information directly in the form fields below.
             </p>
           </div>
         ) : (
@@ -795,11 +807,7 @@ function DailyInputItemPicker({
                 <div className="di-unselected-warning">
                   <span className="di-warn-icon">👉</span>
                   <span>
-                    {currentType === "raw_material" && !searchTerm.trim() ? (
-                      <>Please search for a <strong>Raw Material</strong> in the search box below *</>
-                    ) : (
-                      <>Please click to select a <strong>{currentType === "raw_material" ? "Raw Material" : "Product"}</strong> from the list below *</>
-                    )}
+                    Please click to select a <strong>{currentType === "raw_material" ? "Raw Material" : "Product"}</strong> from the list below *
                   </span>
                 </div>
               )}
@@ -816,7 +824,7 @@ function DailyInputItemPicker({
                       className="di-search-input"
                       placeholder={
                         currentType === "raw_material"
-                          ? "Search raw material starting with (e.g. 'W')... (Press Enter to select)"
+                          ? "Search raw material by name, code... (Press Enter to select)"
                           : "Search product by name, code, Zach code, type... (Press Enter to select)"
                       }
                       value={searchTerm}
@@ -848,6 +856,26 @@ function DailyInputItemPicker({
                       </button>
                     )}
                   </div>
+                  {currentType === "raw_material" && onAddNewRawMaterial && (
+                    <button
+                      type="button"
+                      className="di-add-btn-quick di-add-btn-quick-rm"
+                      onClick={() => onAddNewRawMaterial(searchTerm.trim())}
+                      title="Raw material does not exist? Click to add it"
+                    >
+                      + Raw material does not exist? Add it
+                    </button>
+                  )}
+                  {currentType === "product" && onAddNewProduct && (
+                    <button
+                      type="button"
+                      className="di-add-btn-quick di-add-btn-quick-prd"
+                      onClick={() => onAddNewProduct(searchTerm.trim())}
+                      title="Product does not exist? Click to add it"
+                    >
+                      + Product does not exist? Add it
+                    </button>
+                  )}
                 </div>
 
                 {error && (
@@ -874,23 +902,23 @@ function DailyInputItemPicker({
                               <strong>"{searchTerm.trim()}"</strong> does not exist in {currentType === "raw_material" ? "Raw Materials" : "Products"}.
                             </p>
                             <div className="di-not-found-prompt">
-                              <span className="di-not-found-q">Want to add?</span>
+                              <span className="di-not-found-q">Cannot find it?</span>
                               <div className="di-not-found-actions">
                                 {currentType === "raw_material" ? (
                                   <button
                                     type="button"
-                                    className="di-add-btn-rm"
+                                    className="di-add-btn-rm di-add-btn-quick-rm"
                                     onClick={() => onAddNewRawMaterial && onAddNewRawMaterial(searchTerm.trim())}
                                   >
-                                    + Add Raw Material
+                                    + Raw material does not exist? Add it
                                   </button>
                                 ) : (
                                   <button
                                     type="button"
-                                    className="di-add-btn-prd"
+                                    className="di-add-btn-prd di-add-btn-quick-prd"
                                     onClick={() => onAddNewProduct && onAddNewProduct(searchTerm.trim())}
                                   >
-                                    + Add Product
+                                    + Product does not exist? Add it
                                   </button>
                                 )}
                               </div>
@@ -906,17 +934,35 @@ function DailyInputItemPicker({
                         ) : (
                           <div className="di-empty-prompt">
                             {currentType === "raw_material" ? (
-                              <div className="di-unsearched-prompt">
-                                <span className="di-unsearched-icon">🔍</span>
-                                <p className="di-unsearched-msg">
-                                  Please type in the search box above to find raw materials.
-                                </p>
-                                <span className="di-unsearched-sub">
-                                  (e.g., search <strong>W</strong> for raw materials starting with <strong>W</strong>)
-                                </span>
+                              <div>
+                                <p style={{ margin: "4px 0" }}>No raw materials available in inventory.</p>
+                                {onAddNewRawMaterial && (
+                                  <div style={{ marginTop: "8px" }}>
+                                    <button
+                                      type="button"
+                                      className="di-add-btn-quick di-add-btn-quick-rm"
+                                      onClick={() => onAddNewRawMaterial("")}
+                                    >
+                                      + Add Raw Material
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              "No products available."
+                              <div>
+                                <p style={{ margin: "4px 0" }}>No products available in inventory.</p>
+                                {onAddNewProduct && (
+                                  <div style={{ marginTop: "8px" }}>
+                                    <button
+                                      type="button"
+                                      className="di-add-btn-quick di-add-btn-quick-prd"
+                                      onClick={() => onAddNewProduct("")}
+                                    >
+                                      + Add Product
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -991,6 +1037,606 @@ function DailyInputItemPicker({
   );
 }
 
+function DailyInputSupplierPicker({
+  suppliers = [],
+  selectedSupplierId = "",
+  onSelect,
+  onDeselect,
+  onAddNewSupplier,
+  disabled = false,
+  isLoading = false,
+  error = "",
+  onRetry,
+  hasError = false,
+  required = true,
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const selectedSupplier = useMemo(() => {
+    if (!selectedSupplierId) return null;
+    const s = suppliers.find((sup) => String(sup.id) === String(selectedSupplierId));
+    if (s) return s;
+    return { id: selectedSupplierId, company_name: `Supplier #${selectedSupplierId}` };
+  }, [suppliers, selectedSupplierId]);
+
+  const filteredSuppliers = useMemo(() => {
+    const list = suppliers.map((s) => ({
+      id: s.id,
+      company_name: s.company_name || `Supplier #${s.id}`,
+      code: s.code,
+      contact_person: s.contact_person,
+      phone: s.phone,
+      city: s.city,
+      state: s.state,
+      gst_number: s.gst_number,
+      _orig: s,
+    }));
+
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return list;
+
+    return list.filter((s) => {
+      const name = String(s.company_name || "").trim().toLowerCase();
+      const code = String(s.code || "").trim().toLowerCase();
+      const contact = String(s.contact_person || "").trim().toLowerCase();
+      const phone = String(s.phone || "").trim().toLowerCase();
+      const city = String(s.city || "").trim().toLowerCase();
+      const gst = String(s.gst_number || "").trim().toLowerCase();
+      return (
+        name.startsWith(q) ||
+        (code && code.startsWith(q)) ||
+        name.includes(q) ||
+        contact.includes(q) ||
+        phone.includes(q) ||
+        city.includes(q) ||
+        gst.includes(q)
+      );
+    });
+  }, [suppliers, searchTerm]);
+
+  const handleSupplierClick = (s) => {
+    if (disabled || !s) return;
+    onSelect(s._orig || s);
+  };
+
+  return (
+    <div className="di-picker-container di-supplier-picker-container">
+      <div className={`di-box ${hasError && !selectedSupplier ? "di-box-error" : ""}`}>
+        {/* Header with Selected Pill or Instruction */}
+        <div className="di-picker-header">
+          <span className="di-picker-title">
+            Supplier Selection {required ? "*" : ""}{" "}
+            <span className="di-picker-subtext">
+              {searchTerm.trim()
+                ? `(${filteredSuppliers.length} matching of ${suppliers.length})`
+                : `(${suppliers.length} available)`}
+            </span>
+          </span>
+
+          {selectedSupplier ? (
+            <div className="di-selected-pill">
+              <span className="di-type-badge type-sup">
+                ✓ SUPPLIER SELECTED
+              </span>
+              <span className="di-selected-name">
+                <strong>{selectedSupplier.company_name}</strong>
+                {selectedSupplier.code && ` [${selectedSupplier.code}]`}
+                {selectedSupplier.contact_person && ` • 👤 ${selectedSupplier.contact_person}`}
+                {selectedSupplier.phone && ` • 📞 ${selectedSupplier.phone}`}
+                {selectedSupplier.city && ` • 📍 ${selectedSupplier.city}`}
+                {selectedSupplier.gst_number && ` • GST: ${selectedSupplier.gst_number}`}
+              </span>
+              <button
+                type="button"
+                className="di-deselect-btn"
+                onClick={onDeselect}
+                title="Change or deselect this supplier"
+                disabled={disabled}
+              >
+                ✕ Change
+              </button>
+            </div>
+          ) : (
+            <div className="di-unselected-warning">
+              <span className="di-warn-icon">👉</span>
+              <span>
+                Please search for and select a <strong>Supplier</strong> from the list below {required ? "*" : ""}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Search Bar & List (when no supplier is selected) */}
+        {!selectedSupplier && (
+          <>
+            <div className="di-control-bar">
+              <div className="di-search-wrap">
+                <span className="di-search-icon" aria-hidden="true">🔍</span>
+                <input
+                  type="text"
+                  className="di-search-input"
+                  placeholder="Search supplier starting with (e.g. 'A')... (Press Enter to select)"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (filteredSuppliers.length > 0) {
+                        handleSupplierClick(filteredSuppliers[0]);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!selectedSupplier && searchTerm.trim() && filteredSuppliers.length === 1) {
+                      handleSupplierClick(filteredSuppliers[0]);
+                    }
+                  }}
+                  disabled={disabled || isLoading}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    className="di-clear-search-btn"
+                    onClick={() => setSearchTerm("")}
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {onAddNewSupplier && (
+                <button
+                  type="button"
+                  className="di-add-btn-quick di-add-btn-quick-sup"
+                  onClick={() => onAddNewSupplier(searchTerm.trim())}
+                  title="Supplier does not exist? Click to add it"
+                >
+                  + Supplier does not exist? Add it
+                </button>
+              )}
+            </div>
+
+            {error && (
+              <div className="di-picker-error">
+                {error} {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+              </div>
+            )}
+
+            {/* Suppliers List */}
+            <div className="di-list-container">
+              <div className="di-list-scroll">
+                {isLoading ? (
+                  <div className="di-list-loading">Loading suppliers…</div>
+                ) : filteredSuppliers.length === 0 ? (
+                  <div className="di-list-empty">
+                    <div className="di-not-found-card">
+                      <div className="di-not-found-icon-wrap">
+                        <span className="di-not-found-icon">🔍</span>
+                      </div>
+                      <p className="di-not-found-msg">
+                        <strong>"{searchTerm.trim()}"</strong> does not exist in Suppliers.
+                      </p>
+                      {onAddNewSupplier && (
+                        <div className="di-not-found-prompt">
+                          <span className="di-not-found-q">Cannot find supplier?</span>
+                          <div className="di-not-found-actions">
+                            <button
+                              type="button"
+                              className="di-add-btn-rm di-add-btn-quick-sup"
+                              onClick={() => onAddNewSupplier(searchTerm.trim())}
+                            >
+                              + Supplier does not exist? Add it
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className="di-clear-filter-link"
+                        onClick={() => setSearchTerm("")}
+                      >
+                        Clear search
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  filteredSuppliers.map((s) => {
+                    const isSelected = selectedSupplier && String(selectedSupplier.id) === String(s.id);
+                    return (
+                      <div
+                        key={s.id}
+                        className={`di-item-row row-sup ${isSelected ? "selected" : ""}`}
+                        onClick={() => handleSupplierClick(s)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleSupplierClick(s);
+                          }
+                        }}
+                      >
+                        <div className="di-row-radio">
+                          <span className={`di-radio-circle ${isSelected ? "active" : ""}`} />
+                        </div>
+
+                        <span className="di-type-tag tag-sup">
+                          SUPPLIER
+                        </span>
+
+                        <div className="di-item-info">
+                          <span className="di-item-name">{s.company_name}</span>
+                          {s.code && <span className="di-item-code">[{s.code}]</span>}
+                          {s.contact_person && <span className="di-item-subtype">👤 {s.contact_person}</span>}
+                          {s.city && <span className="di-item-subtype">📍 {s.city}</span>}
+                        </div>
+
+                        <div className="di-item-meta">
+                          {s.phone && <span className="di-meta-pill">📞 {s.phone}</span>}
+                          {s.gst_number && <span className="di-meta-pill">GST: {s.gst_number}</span>}
+                          <span className={`di-select-cta ${isSelected ? "active" : ""}`}>
+                            {isSelected ? "Selected ✓" : "Select →"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DailyInputRawMaterialPicker({
+  rawMaterials = [],
+  products = [],
+  selectedRawMaterialId = "",
+  selectedProductId = "",
+  selectedItemName = "",
+  onSelect,
+  onDeselect,
+  onAddNewRawMaterial,
+  disabled = false,
+  isLoading = false,
+  error = "",
+  onRetry,
+  hasError = false,
+  required = true,
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const selectedItem = useMemo(() => {
+    if (selectedRawMaterialId) {
+      const rm = rawMaterials.find((m) => String(m.id) === String(selectedRawMaterialId));
+      if (rm) {
+        return {
+          ...rm,
+          _itemType: "raw_material",
+          _displayName: rm.material_name || `Raw Material #${rm.id}`,
+        };
+      }
+      return {
+        id: selectedRawMaterialId,
+        material_name: selectedItemName || `Raw Material #${selectedRawMaterialId}`,
+        _itemType: "raw_material",
+        _displayName: selectedItemName || `Raw Material #${selectedRawMaterialId}`,
+      };
+    }
+    if (selectedProductId) {
+      const p = products.find((prod) => String(prod.id) === String(selectedProductId));
+      if (p) {
+        return {
+          ...p,
+          _itemType: "product",
+          _displayName: p.name || `Product #${p.id}`,
+        };
+      }
+      return {
+        id: selectedProductId,
+        name: selectedItemName || `Product #${selectedProductId}`,
+        _itemType: "product",
+        _displayName: selectedItemName || `Product #${selectedProductId}`,
+      };
+    }
+    if (selectedItemName) {
+      const matchedRm = rawMaterials.find(
+        (m) => String(m.material_name || "").trim().toLowerCase() === String(selectedItemName).trim().toLowerCase()
+      );
+      if (matchedRm) {
+        return {
+          ...matchedRm,
+          _itemType: "raw_material",
+          _displayName: matchedRm.material_name,
+        };
+      }
+      return {
+        id: "custom",
+        material_name: selectedItemName,
+        _itemType: "raw_material",
+        _displayName: selectedItemName,
+      };
+    }
+    return null;
+  }, [selectedRawMaterialId, selectedProductId, selectedItemName, rawMaterials, products]);
+
+  const filteredMaterials = useMemo(() => {
+    const list = rawMaterials.map((rm) => ({
+      id: rm.id,
+      material_name: rm.material_name || `Raw Material #${rm.id}`,
+      code: rm.code,
+      unit: rm.unit,
+      rate: rm.standard_rate !== undefined && rm.standard_rate !== null ? rm.standard_rate : rm.rate,
+      hsn_code: rm.hsn_code,
+      category: rm.category,
+      _itemType: "raw_material",
+      _orig: rm,
+    }));
+
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return list;
+
+    return list.filter((m) => {
+      const name = String(m.material_name || "").trim().toLowerCase();
+      const code = String(m.code || "").trim().toLowerCase();
+      const hsn = String(m.hsn_code || "").trim().toLowerCase();
+      const cat = String(m.category || "").trim().toLowerCase();
+      return (
+        name.startsWith(q) ||
+        (code && code.startsWith(q)) ||
+        name.includes(q) ||
+        code.includes(q) ||
+        hsn.includes(q) ||
+        cat.includes(q)
+      );
+    });
+  }, [rawMaterials, searchTerm]);
+
+  const handleMaterialClick = (m) => {
+    if (disabled || !m) return;
+    onSelect(m._orig || m);
+  };
+
+  return (
+    <div className="di-picker-container di-material-picker-container">
+      <div className={`di-box ${hasError && !selectedItem ? "di-box-error" : ""}`}>
+        {/* Header with Selected Pill or Instruction */}
+        <div className="di-picker-header">
+          <span className="di-picker-title">
+            Raw Material Selection {required ? "*" : ""}{" "}
+            <span className="di-picker-subtext">
+              {searchTerm.trim()
+                ? `(${filteredMaterials.length} matching of ${rawMaterials.length})`
+                : `(${rawMaterials.length} available)`}
+            </span>
+          </span>
+
+          {selectedItem ? (
+            <div className="di-selected-pill">
+              <span className="di-type-badge type-rm">
+                ✓ RAW MATERIAL SELECTED
+              </span>
+              <span className="di-selected-name">
+                <strong>{selectedItem._displayName || selectedItem.material_name}</strong>
+                {selectedItem.code && ` [${selectedItem.code}]`}
+                {selectedItem.unit && ` • Unit: ${selectedItem.unit}`}
+                {selectedItem.rate !== undefined && selectedItem.rate !== null && selectedItem.rate !== "" && ` • Rate: ₹${Number(selectedItem.rate).toFixed(2)}`}
+                {selectedItem.hsn_code && ` • HSN: ${selectedItem.hsn_code}`}
+              </span>
+              <button
+                type="button"
+                className="di-deselect-btn"
+                onClick={onDeselect}
+                title="Change or deselect this raw material"
+                disabled={disabled}
+              >
+                ✕ Change
+              </button>
+            </div>
+          ) : (
+            <div className="di-unselected-warning">
+              <span className="di-warn-icon">👉</span>
+              <span>
+                Please search for and select a <strong>Raw Material</strong> from the list below {required ? "*" : ""}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Search Bar & List (when no raw material is selected) */}
+        {!selectedItem && (
+          <>
+            <div className="di-control-bar">
+              <div className="di-search-wrap">
+                <span className="di-search-icon" aria-hidden="true">🔍</span>
+                <input
+                  type="text"
+                  className="di-search-input"
+                  placeholder="Search raw material starting with (e.g. 'A')... (Press Enter to select)"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (filteredMaterials.length > 0) {
+                        handleMaterialClick(filteredMaterials[0]);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!selectedItem && searchTerm.trim() && filteredMaterials.length === 1) {
+                      handleMaterialClick(filteredMaterials[0]);
+                    }
+                  }}
+                  disabled={disabled || isLoading}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    className="di-clear-search-btn"
+                    onClick={() => setSearchTerm("")}
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {onAddNewRawMaterial && (
+                <button
+                  type="button"
+                  className="di-add-btn-quick di-add-btn-quick-rm"
+                  onClick={() => onAddNewRawMaterial(searchTerm.trim())}
+                  title="Raw material does not exist? Click to add it"
+                >
+                  + Raw material does not exist? Add it
+                </button>
+              )}
+            </div>
+
+            {error && (
+              <div className="di-picker-error">
+                {error} {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+              </div>
+            )}
+
+            {/* Materials List */}
+            <div className="di-list-container">
+              <div className="di-list-scroll">
+                {isLoading ? (
+                  <div className="di-list-loading">Loading raw materials…</div>
+                ) : filteredMaterials.length === 0 ? (
+                  <div className="di-list-empty">
+                    <div className="di-not-found-card">
+                      <div className="di-not-found-icon-wrap">
+                        <span className="di-not-found-icon">🔍</span>
+                      </div>
+                      <p className="di-not-found-msg">
+                        <strong>"{searchTerm.trim()}"</strong> does not exist in Raw Materials.
+                      </p>
+                      {onAddNewRawMaterial && (
+                        <div className="di-not-found-prompt">
+                          <span className="di-not-found-q">Cannot find raw material?</span>
+                          <div className="di-not-found-actions">
+                            <button
+                              type="button"
+                              className="di-add-btn-rm di-add-btn-quick-rm"
+                              onClick={() => onAddNewRawMaterial(searchTerm.trim())}
+                            >
+                              + Raw material does not exist? Add it
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className="di-clear-filter-link"
+                        onClick={() => setSearchTerm("")}
+                      >
+                        Clear search
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  filteredMaterials.map((m) => {
+                    const isSelected = selectedItem && String(selectedItem.id) === String(m.id);
+                    return (
+                      <div
+                        key={m.id}
+                        className={`di-item-row row-rm ${isSelected ? "selected" : ""}`}
+                        onClick={() => handleMaterialClick(m)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleMaterialClick(m);
+                          }
+                        }}
+                      >
+                        <div className="di-row-radio">
+                          <span className={`di-radio-circle ${isSelected ? "active" : ""}`} />
+                        </div>
+
+                        <span className="di-type-tag tag-rm">
+                          RAW MATERIAL
+                        </span>
+
+                        <div className="di-item-info">
+                          <span className="di-item-name">{m.material_name}</span>
+                          {m.code && <span className="di-item-code">[{m.code}]</span>}
+                          {m.unit && <span className="di-item-subtype">Unit: {m.unit}</span>}
+                          {m.category && <span className="di-item-subtype">📁 {m.category}</span>}
+                        </div>
+
+                        <div className="di-item-meta">
+                          {m.rate !== undefined && m.rate !== null && m.rate !== "" && (
+                            <span className="di-meta-pill">₹{Number(m.rate).toFixed(2)}</span>
+                          )}
+                          {m.hsn_code && <span className="di-meta-pill">HSN: {m.hsn_code}</span>}
+                          <span className={`di-select-cta ${isSelected ? "active" : ""}`}>
+                            {isSelected ? "Selected ✓" : "Select →"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="section-error-boundary" style={{ padding: "30px", textAlign: "center" }}>
+          <div style={{ maxWidth: "520px", margin: "0 auto", padding: "24px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px" }}>
+            <span style={{ fontSize: "36px", display: "block", marginBottom: "12px" }}>⚠️</span>
+            <h3 style={{ margin: "0 0 8px 0", color: "#991b1b" }}>Something went wrong in this section</h3>
+            <p style={{ margin: "0 0 16px 0", color: "#b91c1c", fontSize: "14px" }}>
+              {this.state.error?.message || "An unexpected error occurred while loading this view."}
+            </p>
+            <button
+              type="button"
+              className="primary-action"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                if (this.props.onReset) this.props.onReset();
+              }}
+            >
+              Try Again / Refresh
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function Workspace({ user, onLogout }) {
   const availableNavigation = useMemo(() => {
     return navigation
@@ -1029,6 +1675,7 @@ function Workspace({ user, onLogout }) {
     masterFiles: true,
     parties: true,
   });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const toggleDropdown = (groupId) => {
     setOpenDropdowns((prev) => ({
@@ -1119,6 +1766,32 @@ const toggleSelectAll = (rows) => {
   const [editingRecord, setEditingRecord] = useState(null);
   const [formType, setFormType] = useState("raw_material");
   const [formValues, setFormValues] = useState({});
+  const [stagedDailyInputs, setStagedDailyInputs] = useState([]);
+
+  const stagedTotals = useMemo(() => {
+    return stagedDailyInputs.reduce(
+      (acc, row) => ({
+        quantity: acc.quantity + (Number(row.quantity) || 0),
+        basic_value: acc.basic_value + (Number(row.basic_value) || 0),
+        discount_amount: acc.discount_amount + (Number(row.discount_amount) || 0),
+        amount: acc.amount + (Number(row.amount) || 0),
+        cgst_amount: acc.cgst_amount + (Number(row.cgst_amount) || 0),
+        ut_sgst_amount: acc.ut_sgst_amount + (Number(row.ut_sgst_amount) || 0),
+        igst_amount: acc.igst_amount + (Number(row.igst_amount) || 0),
+        total_amount: acc.total_amount + (Number(row.total_amount) || 0),
+      }),
+      {
+        quantity: 0,
+        basic_value: 0,
+        discount_amount: 0,
+        amount: 0,
+        cgst_amount: 0,
+        ut_sgst_amount: 0,
+        igst_amount: 0,
+        total_amount: 0,
+      }
+    );
+  }, [stagedDailyInputs]);
   const [pageError, setPageError] = useState("");
   const [notice, setNotice] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -1159,10 +1832,15 @@ const toggleSelectAll = (rows) => {
 
     setIsSavingQuickRm(true);
 
+    const resolvedUnit =
+      quickAddRawMaterialModal.unit === "other"
+        ? (String(quickAddRawMaterialModal.unit_other || "").trim() || "other")
+        : quickAddRawMaterialModal.unit || "num";
+
     const payload = {
       material_name: name,
       hsn_code: quickAddRawMaterialModal.hsn_code ? String(quickAddRawMaterialModal.hsn_code).trim() : null,
-      unit: quickAddRawMaterialModal.unit || "num",
+      unit: resolvedUnit,
       rate: quickAddRawMaterialModal.rate !== "" && quickAddRawMaterialModal.rate !== null ? Number(quickAddRawMaterialModal.rate) : 0,
       discount_percent: quickAddRawMaterialModal.discount_percent !== "" && quickAddRawMaterialModal.discount_percent !== null ? Number(quickAddRawMaterialModal.discount_percent) : 0,
       cgst_percent: quickAddRawMaterialModal.cgst_percent !== "" && quickAddRawMaterialModal.cgst_percent !== null ? Number(quickAddRawMaterialModal.cgst_percent) : 0,
@@ -1232,11 +1910,14 @@ const toggleSelectAll = (rows) => {
     }
 
     const mode = quickAddProductModal.product_mode || "without_zach_code";
-    const type = quickAddProductModal.type || "element";
+    const resolvedType =
+      quickAddProductModal.type === "other"
+        ? (String(quickAddProductModal.type_other || "").trim() || "other")
+        : quickAddProductModal.type || "element";
 
     const payload = {
       name,
-      type,
+      type: resolvedType,
     };
 
     if (mode === "with_zach_code") {
@@ -1251,13 +1932,13 @@ const toggleSelectAll = (rows) => {
       payload.has_zach_code = false;
       payload.zach_code = null;
 
-      if (type === "welded element") {
+      if (resolvedType === "welded element") {
         if (!quickAddProductModal.element_id) {
           setQuickPrdError("Please select an element for the welded element.");
           return;
         }
         payload.element_id = Number(quickAddProductModal.element_id);
-      } else if (type === "capacitor") {
+      } else if (resolvedType === "capacitor") {
         if (!quickAddProductModal.welded_element_id) {
           setQuickPrdError("Please select a welded element for the capacitor.");
           return;
@@ -1308,6 +1989,79 @@ const toggleSelectAll = (rows) => {
     }
   }
 
+  const [quickAddSupplierModal, setQuickAddSupplierModal] = useState(null);
+  const [isSavingQuickSup, setIsSavingQuickSup] = useState(false);
+  const [quickSupError, setQuickSupError] = useState("");
+
+  function handleOpenQuickAddSupplier(searchedName) {
+    setPageError("");
+    setQuickSupError("");
+    setQuickAddSupplierModal({
+      company_name: searchedName || "",
+      contact_person: "",
+      email: "",
+      phone: "",
+      address: "",
+      city: "",
+      state: "",
+      pincode: "",
+      gst_number: "",
+    });
+  }
+
+  async function handleSaveQuickSupplier(event) {
+    event.preventDefault();
+    setQuickSupError("");
+
+    const name = String(quickAddSupplierModal?.company_name || "").trim();
+    if (!name) {
+      setQuickSupError("Supplier company name is required.");
+      return;
+    }
+
+    setIsSavingQuickSup(true);
+
+    const payload = {
+      company_name: name,
+      contact_person: quickAddSupplierModal.contact_person ? String(quickAddSupplierModal.contact_person).trim() : null,
+      email: quickAddSupplierModal.email ? String(quickAddSupplierModal.email).trim() : null,
+      phone: quickAddSupplierModal.phone ? String(quickAddSupplierModal.phone).trim() : null,
+      address: quickAddSupplierModal.address ? String(quickAddSupplierModal.address).trim() : null,
+      city: quickAddSupplierModal.city ? String(quickAddSupplierModal.city).trim() : null,
+      state: quickAddSupplierModal.state ? String(quickAddSupplierModal.state).trim() : null,
+      pincode: quickAddSupplierModal.pincode ? String(quickAddSupplierModal.pincode).trim() : null,
+      gst_number: quickAddSupplierModal.gst_number ? String(quickAddSupplierModal.gst_number).trim() : null,
+    };
+
+    try {
+      const result = await window.desktop.createWorkspaceRecord("suppliers", payload);
+      if (!result.ok) {
+        setQuickSupError(typeof result.error === "string" ? result.error : "Failed to create supplier.");
+        setIsSavingQuickSup(false);
+        return;
+      }
+
+      const newSup = result.data;
+      setLookupOptions((prev) => ({
+        ...prev,
+        suppliers: [...(prev.suppliers || []).filter((s) => String(s.id) !== String(newSup.id)), newSup],
+      }));
+
+      setDashboardCounts((current) => ({
+        ...current,
+        suppliers: (current.suppliers || 0) + 1,
+      }));
+
+      handleFormFieldChange("supplier_id", newSup.id);
+      setNotice(`Supplier "${newSup.company_name}" created successfully and selected!`);
+      setQuickAddSupplierModal(null);
+    } catch (err) {
+      setQuickSupError(err?.message || "Failed to create supplier.");
+    } finally {
+      setIsSavingQuickSup(false);
+    }
+  }
+
   function handleDailyInputTypeChange(newType) {
     setFormType(newType);
     setFormValues((prev) => ({
@@ -1320,7 +2074,9 @@ const toggleSelectAll = (rows) => {
       unit: newType === "product" ? "num" : "",
       hsn_code: "",
       rate: "",
+      basic_value: 0,
       discount_percent: 0,
+      discount_amount: 0,
       cgst_percent: 0,
       ut_sgst_percent: 0,
       igst_percent: 0,
@@ -1359,9 +2115,11 @@ const toggleSelectAll = (rows) => {
 
         const quantity = Number(next.quantity) || 0;
         const rate = Number(next.rate) || 0;
+        const grossAmount = Number((quantity * rate).toFixed(2));
+        next.basic_value = grossAmount;
         const discountPercent = Number(next.discount_percent) || 0;
-        const grossAmount = quantity * rate;
         const discountAmount = (grossAmount * discountPercent) / 100;
+        next.discount_amount = Number(discountAmount.toFixed(2));
         next.amount = Number((grossAmount - discountAmount).toFixed(2));
 
         const cgstPercent = Number(next.cgst_percent) || 0;
@@ -1402,7 +2160,9 @@ const toggleSelectAll = (rows) => {
       unit: prev.type === "product" ? "num" : "",
       hsn_code: "",
       rate: "",
+      basic_value: 0,
       discount_percent: 0,
+      discount_amount: 0,
       cgst_percent: 0,
       ut_sgst_percent: 0,
       igst_percent: 0,
@@ -1412,6 +2172,184 @@ const toggleSelectAll = (rows) => {
       igst_amount: 0,
       total_amount: 0,
     }));
+  }
+
+  function handleTableSelectRawMaterial(rmId) {
+    handleDailyInputItemSelect({ type: "raw_material", id: rmId });
+  }
+
+  function handleTableSelectProduct(prdId) {
+    handleDailyInputItemSelect({ type: "product", id: prdId });
+  }
+
+
+  function handleAddMoreDailyInput() {
+    setPageError("");
+    const typeVal = formValues.type || formType || "raw_material";
+    let itemName = "";
+    let rmId = null;
+    let prdId = null;
+
+    if (typeVal === "raw_material") {
+      rmId = formValues.raw_material_id ? Number(formValues.raw_material_id) : null;
+      const matchedRm = (lookupOptions.rawMaterials || []).find((m) => Number(m.id) === rmId);
+      itemName = matchedRm?.material_name || formValues.item || "";
+      if (!rmId && itemName) {
+        const found = (lookupOptions.rawMaterials || []).find(
+          (m) => String(m.material_name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
+        );
+        if (found) {
+          rmId = found.id;
+          itemName = found.material_name;
+        }
+      }
+      if (!rmId || !itemName) {
+        setPageError("Please click and select a specific raw material from the list first.");
+        return;
+      }
+    } else if (typeVal === "product" || typeVal === "element") {
+      prdId = formValues.product_id ? Number(formValues.product_id) : null;
+      const matchedPrd = (lookupOptions.products || []).find((p) => Number(p.id) === prdId);
+      itemName = matchedPrd?.name || formValues.item || "";
+      if (!prdId && itemName) {
+        const found = (lookupOptions.products || []).find(
+          (p) => String(p.name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
+        );
+        if (found) {
+          prdId = found.id;
+          itemName = found.name;
+        }
+      }
+      if (!prdId || !itemName) {
+        setPageError("Please click and select a specific product from the list first.");
+        return;
+      }
+    } else {
+      itemName = String(formValues.material_name || formValues.item || "").trim();
+      if (!itemName) {
+        setPageError("Material / item name is required.");
+        return;
+      }
+    }
+
+    const qty = Number(formValues.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setPageError("Quantity is required and must be greater than 0.");
+      return;
+    }
+
+    const rate = Number(formValues.rate) || 0;
+    const basicValue = Number((qty * rate).toFixed(2));
+    const discountPercent = Number(formValues.discount_percent) || 0;
+    const discountAmount = formValues.discount_amount !== undefined && formValues.discount_amount !== ""
+      ? Number(formValues.discount_amount)
+      : Number(((basicValue * discountPercent) / 100).toFixed(2));
+    const taxableValue = Number((basicValue - discountAmount).toFixed(2));
+    const cgstPercent = Number(formValues.cgst_percent) || 0;
+    const sgstPercent = Number(formValues.ut_sgst_percent) || 0;
+    const igstPercent = Number(formValues.igst_percent) || 0;
+    const cgstAmount = Number(((taxableValue * cgstPercent) / 100).toFixed(2));
+    const sgstAmount = Number(((taxableValue * sgstPercent) / 100).toFixed(2));
+    const igstAmount = Number(((taxableValue * igstPercent) / 100).toFixed(2));
+    const invoiceValue = Number((taxableValue + cgstAmount + sgstAmount + igstAmount).toFixed(2));
+
+    const newRow = {
+      _tempId: Date.now() + Math.random(),
+      item: itemName,
+      type: typeVal,
+      raw_material_id: rmId,
+      product_id: prdId,
+      element_id: prdId,
+      quantity: qty,
+      unit: formValues.unit || "",
+      rate,
+      basic_value: basicValue,
+      discount_percent: discountPercent,
+      discount_amount: discountAmount,
+      amount: taxableValue,
+      cgst_percent: cgstPercent,
+      ut_sgst_percent: sgstPercent,
+      igst_percent: igstPercent,
+      cgst_amount: cgstAmount,
+      ut_sgst_amount: sgstAmount,
+      igst_amount: igstAmount,
+      total_amount: invoiceValue,
+      hsn_code: formValues.hsn_code || "",
+      remarks: formValues.remarks || "",
+      other_details: formValues.other_details || null,
+    };
+
+    setStagedDailyInputs((prev) => [...prev, newRow]);
+
+    // Clear active item inputs, keep document info and supplier
+    setFormValues((prev) => ({
+      ...prev,
+      raw_material_id: "",
+      product_id: "",
+      element_id: "",
+      item: "",
+      material_name: "",
+      quantity: "",
+      rate: "",
+      basic_value: "",
+      discount_percent: prev.discount_percent || 0,
+      discount_amount: "",
+      amount: "",
+      cgst_percent: prev.cgst_percent || 0,
+      ut_sgst_percent: prev.ut_sgst_percent || 0,
+      igst_percent: prev.igst_percent || 0,
+      cgst_amount: "",
+      ut_sgst_amount: "",
+      igst_amount: "",
+      total_amount: "",
+      remarks: "",
+    }));
+
+    setNotice(`"${itemName}" added to table. (${stagedDailyInputs.length + 1} item(s) in table)`);
+  }
+
+  function handleEditStagedItem(index) {
+    const itemToEdit = stagedDailyInputs[index];
+    if (!itemToEdit) return;
+
+    setStagedDailyInputs((prev) => prev.filter((_, idx) => idx !== index));
+
+    setFormValues((prev) => ({
+      ...prev,
+      type: itemToEdit.type || "raw_material",
+      raw_material_id: itemToEdit.raw_material_id || "",
+      product_id: itemToEdit.product_id || "",
+      element_id: itemToEdit.element_id || "",
+      item: itemToEdit.item || "",
+      material_name: itemToEdit.item || "",
+      quantity: itemToEdit.quantity ?? "",
+      unit: itemToEdit.unit || "",
+      rate: itemToEdit.rate ?? "",
+      basic_value: itemToEdit.basic_value ?? "",
+      discount_percent: itemToEdit.discount_percent ?? "",
+      discount_amount: itemToEdit.discount_amount ?? "",
+      amount: itemToEdit.amount ?? "",
+      cgst_percent: itemToEdit.cgst_percent ?? "",
+      ut_sgst_percent: itemToEdit.ut_sgst_percent ?? "",
+      igst_percent: itemToEdit.igst_percent ?? "",
+      cgst_amount: itemToEdit.cgst_amount ?? "",
+      ut_sgst_amount: itemToEdit.ut_sgst_amount ?? "",
+      igst_amount: itemToEdit.igst_amount ?? "",
+      total_amount: itemToEdit.total_amount ?? "",
+      hsn_code: itemToEdit.hsn_code || "",
+      remarks: itemToEdit.remarks || "",
+    }));
+
+    setFormType(itemToEdit.type || "raw_material");
+    setNotice(`Loaded "${itemToEdit.item}" back to fields.`);
+  }
+
+  function handleDeleteStagedItem(index) {
+    const item = stagedDailyInputs[index];
+    setStagedDailyInputs((prev) => prev.filter((_, idx) => idx !== index));
+    if (item) {
+      setNotice(`Removed "${item.item}" from table.`);
+    }
   }
 
 function populateRawMaterialFields(record) {
@@ -1461,6 +2399,9 @@ function handleFormFieldChange(name, value) {
           next.welded_element_id = "";
         } else if (value === "capacitor") {
           next.element_id = "";
+        } else if (value === "other") {
+          next.element_id = "";
+          next.welded_element_id = "";
         }
       } else {
         if (value === "raw_material") {
@@ -1560,6 +2501,7 @@ function handleFormFieldChange(name, value) {
         next.hsn_code = "";
         next.rate = "";
         next.discount_percent = 0;
+        next.discount_amount = 0;
         next.cgst_percent = 0;
         next.ut_sgst_percent = 0;
         next.igst_percent = 0;
@@ -1583,7 +2525,9 @@ function handleFormFieldChange(name, value) {
       [
         "quantity",
         "rate",
+        "basic_value",
         "discount_percent",
+        "discount_amount",
         "raw_material_id",
         "product_id",
         "element_id",
@@ -1591,11 +2535,21 @@ function handleFormFieldChange(name, value) {
     ) {
       const quantity = Number(next.quantity) || 0;
       const rate = Number(next.rate) || 0;
-      const discountPercent = Number(next.discount_percent) || 0;
+      const grossAmount = Number((quantity * rate).toFixed(2));
+      next.basic_value = grossAmount;
 
-      const grossAmount = quantity * rate;
-      const discountAmount = (grossAmount * discountPercent) / 100;
-      next.amount = Number((grossAmount - discountAmount).toFixed(2));
+      if (name === "discount_amount") {
+        const discAmt = Number(next.discount_amount) || 0;
+        if (grossAmount > 0) {
+          next.discount_percent = Number(((discAmt * 100) / grossAmount).toFixed(2));
+        }
+        next.amount = Number((grossAmount - discAmt).toFixed(2));
+      } else {
+        const discountPercent = Number(next.discount_percent) || 0;
+        const discountAmount = (grossAmount * discountPercent) / 100;
+        next.discount_amount = Number(discountAmount.toFixed(2));
+        next.amount = Number((grossAmount - discountAmount).toFixed(2));
+      }
     }
 
     // Calculate GST amounts and Total Amount on the discounted Amount
@@ -1603,8 +2557,10 @@ function handleFormFieldChange(name, value) {
       [
         "quantity",
         "rate",
+        "basic_value",
         "amount",
         "discount_percent",
+        "discount_amount",
         "cgst_percent",
         "ut_sgst_percent",
         "igst_percent",
@@ -1664,6 +2620,7 @@ function handleFormFieldChange(name, value) {
       emptyValues.raw_material_id = "";
       emptyValues.product_id = "";
       emptyValues.element_id = "";
+      setStagedDailyInputs([]);
     }
     setFormValues(emptyValues);
     setFormType(activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : "");
@@ -1678,6 +2635,7 @@ function handleFormFieldChange(name, value) {
     setIsFormOpen(false);
     setEditingRecord(null);
     setFormValues({});
+    setStagedDailyInputs([]);
     setProductSaveConfirm(null);
     setFormType(section === "costData" ? "Basic" : section === "products" ? "element" : "raw_material");
     setSearchTerm("");
@@ -1783,7 +2741,7 @@ function handleFormFieldChange(name, value) {
 
   useEffect(() => {
     const lookups = activeSection === "dailyInputs"
-      ? ["customers", "suppliers", "rawMaterials", "products"]
+      ? ["suppliers", "rawMaterials", "products"]
       : activeSection === "products"
       ? ["rawMaterials", "products"]
       : [];
@@ -1884,7 +2842,9 @@ async function submitForm(isAddMore = false) {
       "igst_amount",
       "total_amount",
       "rate",
+      "basic_value",
       "discount_percent",
+      "discount_amount",
       "cgst_percent",
       "ut_sgst_percent",
       "igst_percent",
@@ -1942,7 +2902,13 @@ async function submitForm(isAddMore = false) {
 
         record[key] = numberValue;
       } else {
-        record[key] = value;
+        if (value === "other" && formValues[`${key}_other`]) {
+          record[key] = String(formValues[`${key}_other`]).trim();
+        } else if (value === "other") {
+          record[key] = "other";
+        } else {
+          record[key] = value;
+        }
       }
     }
 
@@ -1959,7 +2925,6 @@ async function submitForm(isAddMore = false) {
             "raw_material_id",
             "product_id",
             "element_id",
-            "customer_id",
             "supplier_id",
             "dc_no",
             "dc_date",
@@ -1972,7 +2937,9 @@ async function submitForm(isAddMore = false) {
             "user_id",
             "unit",
             "rate",
+            "basic_value",
             "discount_percent",
+            "discount_amount",
             "amount",
             "cgst_percent",
             "ut_sgst_percent",
@@ -1992,6 +2959,7 @@ async function submitForm(isAddMore = false) {
             "supplier_address",
             "supplier_city",
             "supplier_state",
+            "supplier_pincode",
             "supplier_gst_number",
           ]
         : []),
@@ -2010,7 +2978,9 @@ async function submitForm(isAddMore = false) {
         formValues.product_mode === "with_zach_code" ||
         (!formValues.product_mode && (editingRecord?.has_zach_code || Boolean(editingRecord?.zach_code)));
 
-      const typeVal = formValues.type || (editingRecord ? editingRecord.type : "element");
+      const typeVal = formValues.type === "other"
+        ? (String(formValues.type_other || "").trim() || "other")
+        : formValues.type || (editingRecord ? editingRecord.type : "element");
       record.type = typeVal;
 
       if (isWithZach) {
@@ -2053,6 +3023,9 @@ async function submitForm(isAddMore = false) {
             return;
           }
           record.welded_element_id = Number(weId);
+        } else {
+          record.element_id = null;
+          record.welded_element_id = null;
         }
       }
 
@@ -2077,7 +3050,9 @@ async function submitForm(isAddMore = false) {
     // Prepare Cost Data payload
     // --------------------------------------------------
     if (activeSection === "costData") {
-      const typeVal = formValues.type || (editingRecord ? editingRecord.type : "Basic");
+      const typeVal = formValues.type === "other"
+        ? (String(formValues.type_other || "").trim() || "other")
+        : formValues.type || (editingRecord ? editingRecord.type : "Basic");
       record.type = typeVal;
 
       if (typeVal === "Basic") {
@@ -2092,8 +3067,175 @@ async function submitForm(isAddMore = false) {
     }
 
     // --------------------------------------------------
-    // 2. Prepare Daily Inputs payload
+    // 2. Prepare Daily Inputs payload & batch save for new entries
     // --------------------------------------------------
+    if (activeSection === "dailyInputs" && !editingRecord) {
+      const isOther = (formValues.type || formType) === "other";
+      const suppId = formValues.supplier_id ? Number(formValues.supplier_id) : null;
+      const suppCompName = String(formValues.supplier_company_name || "").trim();
+
+      if (!isOther && (!suppId || suppId <= 0)) {
+        setPageError("Supplier is compulsory. Please search and select a supplier from the list.");
+        setIsSaving(false);
+        return;
+      }
+      if (isOther && !suppCompName) {
+        setPageError("Supplier company name is compulsory.");
+        setIsSaving(false);
+        return;
+      }
+
+      let itemsToSave = [...stagedDailyInputs];
+
+      const hasActiveItem = Boolean(
+        (formValues.raw_material_id || formValues.product_id || formValues.item || (isOther && formValues.material_name)) &&
+        Number(formValues.quantity) > 0
+      );
+
+      if (hasActiveItem) {
+        const curType = formValues.type || formType || "raw_material";
+        let curItemName = formValues.item || "";
+        let curRmId = formValues.raw_material_id ? Number(formValues.raw_material_id) : null;
+        let curPrdId = formValues.product_id ? Number(formValues.product_id) : null;
+
+        if (curType === "raw_material" && curRmId) {
+          const m = (lookupOptions.rawMaterials || []).find((rm) => Number(rm.id) === curRmId);
+          if (m) curItemName = m.material_name;
+        } else if ((curType === "product" || curType === "element") && curPrdId) {
+          const p = (lookupOptions.products || []).find((prd) => Number(prd.id) === curPrdId);
+          if (p) curItemName = p.name;
+        } else if (isOther) {
+          curItemName = formValues.material_name || formValues.item || "";
+        }
+
+        const curQty = Number(formValues.quantity);
+        const curRate = Number(formValues.rate) || 0;
+        const curBasic = Number((curQty * curRate).toFixed(2));
+        const curDiscPct = Number(formValues.discount_percent) || 0;
+        const curDiscAmt = formValues.discount_amount !== undefined && formValues.discount_amount !== ""
+          ? Number(formValues.discount_amount)
+          : Number(((curBasic * curDiscPct) / 100).toFixed(2));
+        const curTaxable = Number((curBasic - curDiscAmt).toFixed(2));
+        const curCgstPct = Number(formValues.cgst_percent) || 0;
+        const curSgstPct = Number(formValues.ut_sgst_percent) || 0;
+        const curIgstPct = Number(formValues.igst_percent) || 0;
+        const curCgstAmt = Number(((curTaxable * curCgstPct) / 100).toFixed(2));
+        const curSgstAmt = Number(((curTaxable * curSgstPct) / 100).toFixed(2));
+        const curIgstAmt = Number(((curTaxable * curIgstPct) / 100).toFixed(2));
+        const curTotalAmt = Number((curTaxable + curCgstAmt + curSgstAmt + curIgstAmt).toFixed(2));
+
+        itemsToSave.push({
+          item: curItemName,
+          type: curType,
+          raw_material_id: curRmId,
+          product_id: curPrdId,
+          element_id: curPrdId,
+          quantity: curQty,
+          unit: formValues.unit || "",
+          rate: curRate,
+          basic_value: curBasic,
+          discount_percent: curDiscPct,
+          discount_amount: curDiscAmt,
+          amount: curTaxable,
+          cgst_percent: curCgstPct,
+          ut_sgst_percent: curSgstPct,
+          igst_percent: curIgstPct,
+          cgst_amount: curCgstAmt,
+          ut_sgst_amount: curSgstAmt,
+          igst_amount: curIgstAmt,
+          total_amount: curTotalAmt,
+          hsn_code: formValues.hsn_code || "",
+          remarks: formValues.remarks || "",
+          other_details: formValues.other_details || null,
+        });
+      }
+
+      if (itemsToSave.length === 0) {
+        setPageError("Please add at least one raw material with a valid quantity before saving.");
+        setIsSaving(false);
+        return;
+      }
+
+      setIsSaving(true);
+      const commonHeader = {
+        dc_no: formValues.DC_no || formValues.dc_no || null,
+        dc_date: formValues.DC_date || formValues.dc_date || null,
+        bill_no: formValues.bill_no || null,
+        bill_date: formValues.bill_date || null,
+        supplier_id: isOther ? null : suppId,
+        user_id: user?.id ? Number(user.id) : null,
+        customer_id: null,
+      };
+
+      const createdList = [];
+      let failureError = null;
+
+      for (let i = 0; i < itemsToSave.length; i++) {
+        const item = itemsToSave[i];
+        const payload = {
+          ...commonHeader,
+          type: item.type || "raw_material",
+          raw_material_id: item.raw_material_id || null,
+          product_id: item.product_id || null,
+          element_id: item.element_id || null,
+          item: item.item,
+          quantity: item.quantity,
+          unit: item.unit || null,
+          rate: item.rate !== undefined && item.rate !== null && item.rate !== "" ? Number(item.rate) : 0,
+          basic_value: item.basic_value !== undefined && item.basic_value !== null ? Number(item.basic_value) : 0,
+          discount_percent: item.discount_percent !== undefined && item.discount_percent !== null ? Number(item.discount_percent) : 0,
+          discount_amount: item.discount_amount !== undefined && item.discount_amount !== null ? Number(item.discount_amount) : 0,
+          amount: item.amount !== undefined && item.amount !== null ? Number(item.amount) : 0,
+          cgst_amount: item.cgst_amount !== undefined && item.cgst_amount !== null ? Number(item.cgst_amount) : 0,
+          ut_sgst_amount: item.ut_sgst_amount !== undefined && item.ut_sgst_amount !== null ? Number(item.ut_sgst_amount) : 0,
+          igst_amount: item.igst_amount !== undefined && item.igst_amount !== null ? Number(item.igst_amount) : 0,
+          total_amount: item.total_amount !== undefined && item.total_amount !== null ? Number(item.total_amount) : 0,
+          hsn_code: item.hsn_code || null,
+          remarks: item.remarks || null,
+          other_details: item.other_details || (isOther ? {
+            material_name: item.item,
+            supplier_company_name: formValues.supplier_company_name,
+            supplier_contact_person: formValues.supplier_contact_person,
+            supplier_email: formValues.supplier_email,
+            supplier_phone: formValues.supplier_phone,
+            supplier_address: formValues.supplier_address,
+            supplier_city: formValues.supplier_city,
+            supplier_state: formValues.supplier_state,
+            supplier_pincode: formValues.supplier_pincode,
+            supplier_gst_number: formValues.supplier_gst_number,
+          } : null),
+        };
+
+        const res = await window.desktop.createWorkspaceRecord("dailyInputs", payload);
+        if (!res.ok) {
+          failureError = res.error;
+          break;
+        }
+        if (res.data) {
+          createdList.push(res.data);
+        }
+      }
+
+      setIsSaving(false);
+
+      if (failureError) {
+        setPageError(typeof failureError === "string" ? failureError : JSON.stringify(failureError));
+        if (createdList.length > 0) {
+          setRecords((prev) => [...createdList, ...prev]);
+          setStagedDailyInputs((prev) => prev.slice(createdList.length));
+        }
+        return;
+      }
+
+      setRecords((prev) => [...createdList, ...prev]);
+      setStagedDailyInputs([]);
+      setFormValues({});
+      setIsFormOpen(false);
+      setNotice(`Successfully saved ${createdList.length} daily input record(s) to database.`);
+      setRequestVersion((v) => v + 1);
+      return;
+    }
+
     if (activeSection === "dailyInputs") {
       const typeVal = formValues.type || (editingRecord ? editingRecord.type : null);
       if (!typeVal) {
@@ -2162,6 +3304,7 @@ async function submitForm(isAddMore = false) {
         record.product_id = Number(prdId);
         record.element_id = Number(prdId);
         record.raw_material_id = null;
+        record.customer_id = null;
       } else if (typeVal === "other") {
         const itemName = formValues.material_name || formValues.item || (editingRecord ? editingRecord.item : "");
         if (!itemName || !String(itemName).trim()) {
@@ -2169,7 +3312,34 @@ async function submitForm(isAddMore = false) {
           setIsSaving(false);
           return;
         }
+        const suppCompName = String(
+          formValues.supplier_company_name ||
+          editingRecord?.other_details?.supplier_company_name ||
+          editingRecord?.other_details?.company_name ||
+          ""
+        ).trim();
+        if (!suppCompName) {
+          setPageError("Supplier company name is compulsory.");
+          setIsSaving(false);
+          return;
+        }
       }
+
+      if (typeVal === "raw_material" || typeVal === "product" || typeVal === "element") {
+        const suppId =
+          formValues.supplier_id !== undefined &&
+          formValues.supplier_id !== "" &&
+          formValues.supplier_id !== null
+            ? formValues.supplier_id
+            : (editingRecord ? editingRecord.supplier_id : null);
+        if (!suppId || Number(suppId) <= 0) {
+          setPageError("Supplier is compulsory. Please search and select a supplier from the list.");
+          setIsSaving(false);
+          return;
+        }
+        record.supplier_id = Number(suppId);
+      }
+
       const qtyVal = formValues.quantity !== undefined && formValues.quantity !== ""
         ? Number(formValues.quantity)
         : (editingRecord && editingRecord.quantity !== undefined ? Number(editingRecord.quantity) : null);
@@ -2192,7 +3362,9 @@ async function submitForm(isAddMore = false) {
           hsn_code: formValues.hsn_code || null,
           unit: formValues.unit || record.unit || null,
           rate: formValues.rate !== undefined && formValues.rate !== "" ? Number(formValues.rate) : (record.rate !== undefined && record.rate !== null ? Number(record.rate) : null),
+          basic_value: formValues.basic_value !== undefined && formValues.basic_value !== "" ? Number(formValues.basic_value) : (record.basic_value !== undefined && record.basic_value !== null ? Number(record.basic_value) : null),
           discount_percent: formValues.discount_percent !== undefined && formValues.discount_percent !== "" ? Number(formValues.discount_percent) : null,
+          discount_amount: formValues.discount_amount !== undefined && formValues.discount_amount !== "" ? Number(formValues.discount_amount) : null,
           cgst_percent: formValues.cgst_percent !== undefined && formValues.cgst_percent !== "" ? Number(formValues.cgst_percent) : null,
           ut_sgst_percent: formValues.ut_sgst_percent !== undefined && formValues.ut_sgst_percent !== "" ? Number(formValues.ut_sgst_percent) : null,
           igst_percent: formValues.igst_percent !== undefined && formValues.igst_percent !== "" ? Number(formValues.igst_percent) : null,
@@ -2203,6 +3375,7 @@ async function submitForm(isAddMore = false) {
           supplier_address: formValues.supplier_address || null,
           supplier_city: formValues.supplier_city || null,
           supplier_state: formValues.supplier_state || null,
+          supplier_pincode: formValues.supplier_pincode || null,
           supplier_gst_number: formValues.supplier_gst_number || null,
         };
         otherDetails.company_name = otherDetails.supplier_company_name;
@@ -2212,6 +3385,7 @@ async function submitForm(isAddMore = false) {
         otherDetails.address = otherDetails.supplier_address;
         otherDetails.city = otherDetails.supplier_city;
         otherDetails.state = otherDetails.supplier_state;
+        otherDetails.pincode = otherDetails.supplier_pincode;
         otherDetails.gst_number = otherDetails.supplier_gst_number;
         otherDetails.raw_material = {
           material_name: otherDetails.material_name,
@@ -2219,6 +3393,7 @@ async function submitForm(isAddMore = false) {
           unit: otherDetails.unit,
           rate: otherDetails.rate,
           discount_percent: otherDetails.discount_percent,
+          discount_amount: otherDetails.discount_amount,
           cgst_percent: otherDetails.cgst_percent,
           ut_sgst_percent: otherDetails.ut_sgst_percent,
           igst_percent: otherDetails.igst_percent,
@@ -2231,6 +3406,7 @@ async function submitForm(isAddMore = false) {
           address: otherDetails.supplier_address,
           city: otherDetails.supplier_city,
           state: otherDetails.supplier_state,
+          pincode: otherDetails.supplier_pincode,
           gst_number: otherDetails.supplier_gst_number,
         };
 
@@ -2248,9 +3424,10 @@ async function submitForm(isAddMore = false) {
         "quantity",
         "unit",
         "rate",
+        "basic_value",
         "discount_percent",
+        "discount_amount",
         "type",
-        "customer_id",
         "supplier_id",
         "raw_material_id",
         "product_id",
@@ -2323,6 +3500,8 @@ async function submitForm(isAddMore = false) {
       // On update, omit empty amount/GST fields so the backend
       // does not receive explicit null values.
       const amountFields = [
+        "basic_value",
+        "discount_amount",
         "amount",
         "cgst_amount",
         "ut_sgst_amount",
@@ -2510,7 +3689,6 @@ async function submitForm(isAddMore = false) {
         item: "",
         unit: "",
         type: formValues.type || "raw_material",
-        customer_id: prev.customer_id ?? formValues.customer_id ?? "",
         supplier_id: prev.supplier_id ?? formValues.supplier_id ?? "",
         raw_material_id: "",
         product_id: "",
@@ -2524,10 +3702,13 @@ async function submitForm(isAddMore = false) {
         supplier_address: prev.supplier_address ?? formValues.supplier_address ?? "",
         supplier_city: prev.supplier_city ?? formValues.supplier_city ?? "",
         supplier_state: prev.supplier_state ?? formValues.supplier_state ?? "",
+        supplier_pincode: prev.supplier_pincode ?? formValues.supplier_pincode ?? "",
         supplier_gst_number: prev.supplier_gst_number ?? formValues.supplier_gst_number ?? "",
         other_details: null,
         rate: "",
+        basic_value: "",
         discount_percent: "",
+        discount_amount: "",
         amount: "",
         cgst_amount: "",
         ut_sgst_amount: "",
@@ -2664,6 +3845,50 @@ async function handleDeleteSelected() {
   function getRecordFieldValue(record, key) {
     if (key === "DC_no") return record.DC_no ?? record.dc_no;
     if (key === "DC_date") return record.DC_date ?? record.dc_date;
+    if (key === "basic_value") {
+      if (record.basic_value !== undefined && record.basic_value !== null && record.basic_value !== "") {
+        return record.basic_value;
+      }
+      const qty = Number(record.quantity) || 0;
+      const rate = Number(record.rate) || 0;
+      if (qty && rate) {
+        return Number((qty * rate).toFixed(2));
+      }
+      return 0;
+    }
+    if (key === "discount_amount") {
+      if (record.discount_amount !== undefined && record.discount_amount !== null && record.discount_amount !== "") {
+        return record.discount_amount;
+      }
+      const qty = Number(record.quantity) || 0;
+      const rate = Number(record.rate) || 0;
+      const discPercent = Number(record.discount_percent) || 0;
+      if (qty && rate && discPercent) {
+        return Number(((qty * rate * discPercent) / 100).toFixed(2));
+      }
+      return 0;
+    }
+    if (key === "amount") {
+      if (record.amount !== undefined && record.amount !== null && record.amount !== "") {
+        return record.amount;
+      }
+      const qty = Number(record.quantity) || 0;
+      const rate = Number(record.rate) || 0;
+      const discPercent = Number(record.discount_percent) || 0;
+      const basic = qty * rate;
+      const disc = (basic * discPercent) / 100;
+      return Number((basic - disc).toFixed(2));
+    }
+    if (key === "total_amount") {
+      if (record.total_amount !== undefined && record.total_amount !== null && record.total_amount !== "") {
+        return record.total_amount;
+      }
+      const amt = Number(getRecordFieldValue(record, "amount")) || 0;
+      const cgst = Number(record.cgst_amount) || 0;
+      const sgst = Number(record.ut_sgst_amount) || 0;
+      const igst = Number(record.igst_amount) || 0;
+      return Number((amt + cgst + sgst + igst).toFixed(2));
+    }
     return record[key];
   }
 
@@ -2763,7 +3988,7 @@ async function handleDeleteSelected() {
 
   function formatCsvCell(record, key) {
     const raw = getRecordFieldValue(record, key);
-    const val = getRelatedCompanyName(key, raw) ?? raw ?? "";
+    const val = getRelatedCompanyName(key, raw, record) ?? raw ?? "";
     if (typeof val === "string" && key.toLowerCase().includes("date") && val.includes("T")) {
       return val.split("T")[0];
     }
@@ -2849,6 +4074,21 @@ async function handleDeleteSelected() {
       const isDailyInputs = activeSection === "dailyInputs";
       const totalAmountSum = exportRecords.reduce((sum, r) => sum + (Number(r.total_amount) || 0), 0);
       const amountSum = exportRecords.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+      const basicValueSum = exportRecords.reduce((sum, r) => {
+        const val = Number(r.basic_value);
+        if (Number.isFinite(val) && val > 0) return sum + val;
+        const q = Number(r.quantity) || 0;
+        const rt = Number(r.rate) || 0;
+        return sum + (q * rt);
+      }, 0);
+      const discountAmountSum = exportRecords.reduce((sum, r) => {
+        const val = Number(r.discount_amount);
+        if (Number.isFinite(val) && val > 0) return sum + val;
+        const q = Number(r.quantity) || 0;
+        const rt = Number(r.rate) || 0;
+        const dp = Number(r.discount_percent) || 0;
+        return sum + ((q * rt * dp) / 100);
+      }, 0);
       const cgstSum = exportRecords.reduce((sum, r) => sum + (Number(r.cgst_amount) || 0), 0);
       const utSgstSum = exportRecords.reduce((sum, r) => sum + (Number(r.ut_sgst_amount) || 0), 0);
       const igstSum = exportRecords.reduce((sum, r) => sum + (Number(r.igst_amount) || 0), 0);
@@ -2857,10 +4097,12 @@ async function handleDeleteSelected() {
       const totalsMap = {
         total_amount: totalAmountSum.toFixed(2),
         amount: amountSum.toFixed(2),
+        basic_value: basicValueSum.toFixed(2),
+        discount_amount: discountAmountSum.toFixed(2),
         cgst_amount: cgstSum.toFixed(2),
         ut_sgst_amount: utSgstSum.toFixed(2),
         igst_amount: igstSum.toFixed(2),
-        quantity: Number.isInteger(quantitySum) ? String(quantitySum) : quantitySum.toFixed(2),
+        quantity: Number.isInteger(quantitySum) ? String(quantitySum) : String(Number(quantitySum.toFixed(4))),
       };
 
       let labelPlaced = false;
@@ -2919,6 +4161,7 @@ async function handleDeleteSelected() {
       || lower.includes("rate")
       || lower.includes("quantity")
       || lower.includes("percent")
+      || lower.includes("value")
       || lower === "cgst_rate"
       || lower === "ut_sgst_rate"
       || lower === "igst_rate"
@@ -3322,7 +4565,7 @@ async function handleDeleteSelected() {
     }
     if (key === "component_name") {
       if (record?.has_zach_code || record?.zach_code) return "—";
-      if (value) return value;
+      if (value) return String(value);
       if (record?.type === "welded element") {
         const elName = record.element_name || lookupOptions.products?.find((p) => String(p.id) === String(record.element_id))?.name;
         return elName ? `Element: ${elName}` : "—";
@@ -3335,19 +4578,46 @@ async function handleDeleteSelected() {
     }
     if (key === "raw_material_name") {
       if (record?.has_zach_code || record?.zach_code) return "—";
-      if (value) return value;
-      if (record?.raw_material_names && record.raw_material_names.length > 0) {
-        return record.raw_material_names.join(", ");
+      if (value) {
+        if (typeof value === "string") return value;
+        if (Array.isArray(value)) return value.join(", ");
       }
-      if (record?.raw_material_ids && record.raw_material_ids.length > 0) {
-        const idSet = new Set(record.raw_material_ids.map(Number));
+      if (Array.isArray(record?.raw_material_names) && record.raw_material_names.length > 0) {
+        return record.raw_material_names.filter(Boolean).join(", ");
+      }
+      if (Array.isArray(record?.raw_materials) && record.raw_materials.length > 0) {
+        const labels = record.raw_materials
+          .map((item) => {
+            if (!item) return "";
+            const mname = item.material_name || (lookupOptions.rawMaterials || []).find((rm) => String(rm.id) === String(item.raw_material_id || item.id))?.material_name || `Material #${item.raw_material_id || item.id}`;
+            const qty = item.quantity;
+            const unit = item.unit || "";
+            if (qty !== undefined && qty !== null && qty !== "") {
+              return `${mname} (${qty}${unit ? " " + unit : ""})`.trim();
+            }
+            return unit ? `${mname} (${unit})` : mname;
+          })
+          .filter(Boolean);
+        if (labels.length > 0) return labels.join(", ");
+      }
+      const rawIds = Array.isArray(record?.raw_material_ids)
+        ? record.raw_material_ids
+        : typeof record?.raw_material_ids === "string" && record.raw_material_ids.trim().startsWith("[")
+          ? (() => { try { const p = JSON.parse(record.raw_material_ids); return Array.isArray(p) ? p : []; } catch { return []; } })()
+          : [];
+      if (rawIds.length > 0) {
+        const idSet = new Set(rawIds.map(Number));
         const names = (lookupOptions.rawMaterials || [])
           .filter((rm) => idSet.has(Number(rm.id)))
           .map((rm) => rm.material_name)
           .filter(Boolean);
         if (names.length > 0) return names.join(", ");
       }
-      return undefined;
+      if (record?.raw_material_id) {
+        const rm = (lookupOptions.rawMaterials || []).find((m) => String(m.id) === String(record.raw_material_id));
+        if (rm?.material_name) return rm.material_name;
+      }
+      return "—";
     }
     if (key === "raw_material_id") {
       if (record?.type === "other") {
@@ -3503,7 +4773,7 @@ async function handleDeleteSelected() {
   ]);
 
   const activeLookups = activeSection === "dailyInputs"
-    ? ["customers", "suppliers", "rawMaterials", "products"]
+    ? ["suppliers", "rawMaterials", "products"]
     : activeSection === "products"
     ? ["rawMaterials", "products"]
     : [];
@@ -3514,15 +4784,26 @@ async function handleDeleteSelected() {
 
   return (
     <main className="workspace-shell">
-      <aside aria-label="Main navigation" className="sidebar">
+      <aside aria-label="Main navigation" className={`sidebar ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="sidebar-brand">
-          <div className="brand-mark sidebar-mark" aria-hidden="true">OE</div>
-          <div>
-            <strong>Oyster Electronics</strong>
-          </div>
+          <div className="brand-mark sidebar-mark" aria-hidden="true" title="Oyster Electronics">OE</div>
+          {!isSidebarCollapsed && (
+            <div className="brand-text">
+              <strong>Oyster Electronics</strong>
+            </div>
+          )}
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+            title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isSidebarCollapsed ? "»" : "«"}
+          </button>
         </div>
 
-        <span className="sidebar-caption">MENU</span>
+        {!isSidebarCollapsed && <span className="sidebar-caption">MENU</span>}
         <nav className="sidebar-nav">
           {availableNavigation.map((item) => {
             if (item.children) {
@@ -3534,25 +4815,33 @@ async function handleDeleteSelected() {
                   <button
                     type="button"
                     className={`nav-item nav-group-header${isGroupActive ? " active-parent" : ""}`}
-                    onClick={() => toggleDropdown(item.id)}
+                    onClick={() => {
+                      if (isSidebarCollapsed) {
+                        setIsSidebarCollapsed(false);
+                      }
+                      toggleDropdown(item.id);
+                    }}
                     aria-expanded={isGroupOpen}
+                    title={item.label}
                   >
                     <span aria-hidden="true" className="nav-marker">{item.marker}</span>
-                    <span className="nav-group-title">{item.label}</span>
-                    <svg
-                      aria-hidden="true"
-                      className={`nav-chevron-icon${isGroupOpen ? " open" : ""}`}
-                      fill="none"
-                      height="20"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2.8"
-                      viewBox="0 0 24 24"
-                      width="20"
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
+                    {!isSidebarCollapsed && <span className="nav-group-title">{item.label}</span>}
+                    {!isSidebarCollapsed && (
+                      <svg
+                        aria-hidden="true"
+                        className={`nav-chevron-icon${isGroupOpen ? " open" : ""}`}
+                        fill="none"
+                        height="20"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2.8"
+                        viewBox="0 0 24 24"
+                        width="20"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    )}
                   </button>
 
                   {isGroupOpen && (
@@ -3566,9 +4855,10 @@ async function handleDeleteSelected() {
                             aria-current={isChildActive ? "page" : undefined}
                             className={`nav-item nav-sub-item${isChildActive ? " active" : ""}`}
                             onClick={() => navigateToSection(child.id)}
+                            title={child.label}
                           >
                             <span aria-hidden="true" className="nav-sub-marker">{child.marker}</span>
-                            <span className="nav-sub-label">{child.label}</span>
+                            {!isSidebarCollapsed && <span className="nav-sub-label">{child.label}</span>}
                           </button>
                         );
                       })}
@@ -3586,22 +4876,25 @@ async function handleDeleteSelected() {
                 key={item.id}
                 onClick={() => navigateToSection(item.id)}
                 type="button"
+                title={item.label}
               >
                 <span aria-hidden="true" className="nav-marker">{item.marker}</span>
-                {item.label}
+                {!isSidebarCollapsed && item.label}
               </button>
             );
           })}
         </nav>
 
         <div className="sidebar-account">
-          <div className="account-avatar">
+          <div className="account-avatar" title={`${user.first_name || ""} ${user.last_name || ""}`}>
             {user.first_name?.slice(0, 1).toUpperCase()}
           </div>
-          <div className="account-details">
-            <strong>{user.first_name} {user.last_name}</strong>
-            <span>{user.role}</span>
-          </div>
+          {!isSidebarCollapsed && (
+            <div className="account-details">
+              <strong>{user.first_name} {user.last_name}</strong>
+              <span>{user.role}</span>
+            </div>
+          )}
           <button
             aria-label="Sign out"
             className="logout-button"
@@ -3617,6 +4910,19 @@ async function handleDeleteSelected() {
       <section className="workspace-main">
         <header className="topbar">
           <div className="breadcrumb">
+            <button
+              type="button"
+              className="topbar-sidebar-toggle-btn"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label="Toggle navigation sidebar"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
             <span>Workspace</span>
             <span aria-hidden="true">/</span>
             {activeGroup && (
@@ -3643,7 +4949,8 @@ async function handleDeleteSelected() {
               user={user}
             />
           ) : (
-            <section aria-labelledby="page-title" className={`section-page ${isFormOpen ? "has-form-open" : ""}`}>
+            <ErrorBoundary key={activeSection} onReset={() => setRequestVersion((version) => version + 1)}>
+              <section aria-labelledby="page-title" className={`section-page ${isFormOpen ? "has-form-open" : ""}`}>
               <div className="page-heading">
                 <div>
                   <span className="eyebrow">WORKSPACE</span>
@@ -3713,7 +5020,9 @@ async function handleDeleteSelected() {
                         setPageError("Product name is required.");
                         return;
                       }
-                      const pType = formValues.type || (editingRecord ? editingRecord.type : "element");
+                      const pType = formValues.type === "other"
+                        ? (String(formValues.type_other || "").trim() || "other")
+                        : formValues.type || (editingRecord ? editingRecord.type : "element");
                       const isWithZach =
                         formValues.product_mode === "with_zach_code" ||
                         (!formValues.product_mode && (editingRecord?.has_zach_code || Boolean(editingRecord?.zach_code)));
@@ -3867,7 +5176,7 @@ async function handleDeleteSelected() {
                         // When formType is "other", hide master dropdowns (rawMaterial, element, supplier, customer)
                         if (
                           formType === "other" &&
-                          ["rawMaterial", "element", "supplier", "customer"].includes(field.type)
+                          ["rawMaterial", "element", "supplier", "customer", "dailyInputSupplierPicker"].includes(field.type)
                         ) {
                           return null;
                         }
@@ -4035,8 +5344,8 @@ async function handleDeleteSelected() {
                               ? "Select Raw Materials"
                               : field.label;
                           const placeholderText = isWeldedElement
-                            ? "Search wires starting with (e.g. 'W')..."
-                            : "Search raw materials starting with (e.g. 'W')...";
+                            ? "Search wires by name or code..."
+                            : "Search raw materials by name or code...";
 
                           return (
                             <div
@@ -4072,16 +5381,15 @@ async function handleDeleteSelected() {
                           );
                         }
 
-                        if (field.type === "dailyInputItemPicker") {
+                        if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputItemPicker") {
                           return (
                             <div
                               className={`form-field-group ${field.wide ? "field-wide" : ""}`}
                               key={field.name}
                             >
-                              <DailyInputItemPicker
+                              <DailyInputRawMaterialPicker
                                 rawMaterials={lookupOptions.rawMaterials || []}
                                 products={lookupOptions.products || []}
-                                selectedType={formValues.type || editingRecord?.type}
                                 selectedRawMaterialId={
                                   formValues.raw_material_id !== undefined
                                     ? formValues.raw_material_id
@@ -4094,18 +5402,141 @@ async function handleDeleteSelected() {
                                       ? formValues.element_id
                                       : editingRecord?.product_id || editingRecord?.element_id
                                 }
-                                onTypeChange={handleDailyInputTypeChange}
-                                onSelect={handleDailyInputItemSelect}
+                                selectedItemName={formValues.item || editingRecord?.item}
+                                onSelect={(selected) => {
+                                  if (selected._itemType === "product") {
+                                    handleDailyInputItemSelect({ type: "product", id: selected.id, item: selected });
+                                  } else {
+                                    handleDailyInputItemSelect({ type: "raw_material", id: selected.id, item: selected });
+                                  }
+                                }}
                                 onDeselect={handleDailyInputItemDeselect}
                                 onAddNewRawMaterial={(searched) => handleOpenQuickAddRawMaterial(searched)}
-                                onAddNewProduct={(searched) => handleOpenQuickAddProduct(searched)}
                                 disabled={isFieldDisabled || isSaving}
                                 isLoading={lookupLoading.rawMaterials || lookupLoading.products}
                                 error={lookupErrors.rawMaterials || lookupErrors.products}
                                 onRetry={() => setLookupRequestVersion((v) => v + 1)}
-                                hasError={Boolean(pageError && (!formValues.raw_material_id && !formValues.product_id))}
+                                hasError={Boolean(pageError && (!formValues.raw_material_id && !formValues.product_id && !formValues.item))}
+                                required={isFieldRequired}
                               />
                             </div>
+                          );
+                        }
+
+                        if (field.type === "dailyInputSupplierPicker") {
+                          return (
+                            <div
+                              className={`form-field-group ${field.wide ? "field-wide" : ""}`}
+                              key={field.name}
+                            >
+                              <DailyInputSupplierPicker
+                                suppliers={lookupOptions.suppliers || []}
+                                selectedSupplierId={
+                                  formValues.supplier_id !== undefined
+                                    ? formValues.supplier_id
+                                    : editingRecord?.supplier_id
+                                }
+                                onSelect={(supplier) => handleFormFieldChange("supplier_id", supplier.id)}
+                                onDeselect={() => handleFormFieldChange("supplier_id", "")}
+                                onAddNewSupplier={(searched) => handleOpenQuickAddSupplier(searched)}
+                                disabled={isFieldDisabled || isSaving}
+                                isLoading={lookupLoading.suppliers}
+                                error={lookupErrors.suppliers}
+                                onRetry={() => setLookupRequestVersion((v) => v + 1)}
+                                hasError={Boolean(pageError && (!formValues.supplier_id && !editingRecord?.supplier_id))}
+                                required={isFieldRequired}
+                              />
+                            </div>
+                          );
+                        }
+
+                        if (field.type === "select") {
+                          const isOtherSelected =
+                            String(formValues[field.name] || "").trim().toLowerCase() === "other";
+
+                          return (
+                            <React.Fragment key={field.name}>
+                              <label
+                                className={[
+                                  field.wide ? "field-wide" : "",
+                                  isFieldDisabled ? "field-disabled" : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                htmlFor={`record-${field.name}`}
+                              >
+                                <span className="field-label-text">
+                                  {field.label}
+                                  {isFieldRequired && !isFieldDisabled ? " *" : ""}
+                                </span>
+                                <select
+                                  id={`record-${field.name}`}
+                                  name={field.name}
+                                  onChange={(event) =>
+                                    handleFormFieldChange(
+                                      field.name,
+                                      event.target.value
+                                    )
+                                  }
+                                  required={!isFieldDisabled && isFieldRequired}
+                                  disabled={isFieldDisabled}
+                                  value={formValues[field.name] ?? ""}
+                                >
+                                  <option value="">
+                                    Select {field.label.toLowerCase()}
+                                  </option>
+
+                                  {field.options.map((option) => (
+                                    <option
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                  {formValues[field.name] &&
+                                    !field.options.some(
+                                      (option) => option.value === formValues[field.name]
+                                    ) && (
+                                      <option value={formValues[field.name]}>
+                                        {formValues[field.name]}
+                                      </option>
+                                    )}
+                                </select>
+                              </label>
+
+                              {isOtherSelected && !isFieldDisabled && (
+                                <label
+                                  className={[
+                                    field.wide ? "field-wide" : "",
+                                    "field-other-specify",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ")}
+                                  htmlFor={`record-${field.name}-other`}
+                                >
+                                  <span className="field-label-text">
+                                    Specify {field.label} *
+                                  </span>
+                                  <input
+                                    id={`record-${field.name}-other`}
+                                    name={`${field.name}_other`}
+                                    type="text"
+                                    placeholder={`Enter ${field.label.toLowerCase()}`}
+                                    value={formValues[`${field.name}_other`] ?? ""}
+                                    onChange={(e) =>
+                                      handleFormFieldChange(
+                                        `${field.name}_other`,
+                                        e.target.value
+                                      )
+                                    }
+                                    required={!isFieldDisabled && isFieldRequired}
+                                    disabled={isFieldDisabled}
+                                    autoFocus
+                                  />
+                                </label>
+                              )}
+                            </React.Fragment>
                           );
                         }
 
@@ -4233,41 +5664,6 @@ async function handleDeleteSelected() {
                                   aria-readonly="true"
                                 />
                               </div>
-                            ) : field.type === "select" ? (
-                              <select
-                                id={`record-${field.name}`}
-                                name={field.name}
-                                onChange={(event) =>
-                                  handleFormFieldChange(
-                                    field.name,
-                                    event.target.value
-                                  )
-                                }
-                                required={!isFieldDisabled && isFieldRequired}
-                                disabled={isFieldDisabled}
-                                value={formValues[field.name] ?? ""}
-                              >
-                                <option value="">
-                                  Select {field.label.toLowerCase()}
-                                </option>
-
-                                {field.options.map((option) => (
-                                  <option
-                                    key={option.value}
-                                    value={option.value}
-                                  >
-                                    {option.label}
-                                  </option>
-                                ))}
-                                {formValues[field.name] &&
-                                  !field.options.some(
-                                    (option) => option.value === formValues[field.name]
-                                  ) && (
-                                    <option value={formValues[field.name]}>
-                                      {formValues[field.name]}
-                                    </option>
-                                  )}
-                              </select>
                             ) : field.wide ? (
                               <textarea
                                 id={`record-${field.name}`}
@@ -4312,11 +5708,282 @@ async function handleDeleteSelected() {
 
                       const isRemarksField = (name) => name === "remarks";
 
+                      const isDailyInput = activeSection === "dailyInputs";
+
+                      const taxPercentFields = isDailyInput
+                        ? otherFields.filter((f) => f.row === 2)
+                        : [];
+
+                      const supplierPickerFields = isDailyInput
+                        ? otherFields.filter((f) =>
+                            [
+                              "supplier_id",
+                              "supplier_company_name",
+                              "supplier_contact_person",
+                              "supplier_email",
+                              "supplier_phone",
+                              "supplier_address",
+                              "supplier_city",
+                              "supplier_state",
+                              "supplier_pincode",
+                              "supplier_gst_number",
+                            ].includes(f.name)
+                          )
+                        : [];
+
                       const amountFields = otherFields.filter((f) => isAmountField(f.name));
                       const remarksFields = otherFields.filter((f) => isRemarksField(f.name));
                       const mainOtherFields = otherFields.filter(
-                        (f) => !isAmountField(f.name) && !isRemarksField(f.name)
+                        (f) => !isAmountField(f.name) && !isRemarksField(f.name) && f.row !== 2
                       );
+
+                      if (isDailyInput) {
+                        return (
+                          <>
+                            {documentFields.length > 0 && (
+                              <div className="document-fields">
+                                {documentFields.map(renderField)}
+                              </div>
+                            )}
+
+                            {supplierPickerFields.length > 0 && (
+                              <div className="daily-supplier-picker-wrap">
+                                {supplierPickerFields.map(renderField)}
+                              </div>
+                            )}
+
+                            <div className="daily-rm-picker-wrap">
+                              <DailyInputRawMaterialPicker
+                                rawMaterials={lookupOptions.rawMaterials || []}
+                                products={lookupOptions.products || []}
+                                selectedRawMaterialId={formValues.raw_material_id}
+                                selectedProductId={formValues.product_id}
+                                selectedItemName={formValues.item}
+                                onSelect={(selected) => {
+                                  if (selected._itemType === "product") {
+                                    handleDailyInputItemSelect({ type: "product", id: selected.id, item: selected });
+                                  } else {
+                                    handleDailyInputItemSelect({ type: "raw_material", id: selected.id, item: selected });
+                                  }
+                                }}
+                                onDeselect={handleDailyInputItemDeselect}
+                                onAddNewRawMaterial={(searched) => handleOpenQuickAddRawMaterial(searched)}
+                                disabled={isSaving}
+                                isLoading={lookupLoading.rawMaterials}
+                                error={lookupErrors.rawMaterials}
+                                onRetry={() => setLookupRequestVersion((v) => v + 1)}
+                                hasError={Boolean(pageError && !formValues.item && !formValues.raw_material_id)}
+                                required={true}
+                              />
+                            </div>
+
+                            {taxPercentFields.length > 0 && (
+                              <div className="daily-input-tax-row">
+                                {taxPercentFields.map(renderField)}
+                              </div>
+                            )}
+
+                            <div className="staged-raw-materials-section">
+                              <div className="staged-raw-materials-header">
+                                <h3>Raw Materials Table ({stagedDailyInputs.length})</h3>
+                                <span className="staged-hint">
+                                  Select raw material above, enter quantity & rate below, then click "+ Add" to save into table.
+                                </span>
+                              </div>
+                              <div className="staged-table-wrapper">
+                                <table className="staged-table">
+                                  <colgroup>
+                                    <col style={{ width: "3.5%" }} />
+                                    <col style={{ width: "16%" }} />
+                                    <col style={{ width: "6.5%" }} />
+                                    <col style={{ width: "5%" }} />
+                                    <col style={{ width: "7.5%" }} />
+                                    <col style={{ width: "8%" }} />
+                                    <col style={{ width: "8%" }} />
+                                    <col style={{ width: "8%" }} />
+                                    <col style={{ width: "7.5%" }} />
+                                    <col style={{ width: "7.5%" }} />
+                                    <col style={{ width: "7.5%" }} />
+                                    <col style={{ width: "9.5%" }} />
+                                    <col style={{ width: "5.5%" }} />
+                                  </colgroup>
+                                  <thead>
+                                    <tr>
+                                      <th style={{ textAlign: "center" }} title="Row Number">#</th>
+                                      <th title="Name of Raw Material">Raw Material</th>
+                                      <th className="numeric-cell" title="Quantity">Qty</th>
+                                      <th title="Unit">Unit</th>
+                                      <th className="numeric-cell" title="Rate">Rate</th>
+                                      <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
+                                      <th className="numeric-cell" title="Discount Value">Disc Val</th>
+                                      <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
+                                      <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
+                                      <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
+                                      <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                      <th className="numeric-cell" title="Invoice Value">Invoice Val</th>
+                                      <th style={{ textAlign: "center" }} title="Action">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {stagedDailyInputs.map((row, idx) => (
+                                      <tr key={row._tempId} className="staged-saved-row">
+                                        <td style={{ textAlign: "center" }}>{idx + 1}</td>
+                                        <td className="staged-item-name" title={row.item || "—"}>{row.item || "—"}</td>
+                                        <td className="numeric-cell">{row.quantity}</td>
+                                        <td>{row.unit || "—"}</td>
+                                        <td className="numeric-cell">₹{Number(row.rate || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell">₹{Number(row.basic_value || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell">₹{Number(row.discount_amount || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell">₹{Number(row.amount || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell">₹{Number(row.cgst_amount || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell">₹{Number(row.ut_sgst_amount || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell">₹{Number(row.igst_amount || 0).toFixed(2)}</td>
+                                        <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
+                                        <td className="staged-actions-cell" style={{ textAlign: "center" }}>
+                                          <button
+                                            type="button"
+                                            className="staged-action-btn edit-staged-btn"
+                                            onClick={() => handleEditStagedItem(idx)}
+                                            title="Edit this item"
+                                          >
+                                            ✎
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="staged-action-btn delete-staged-btn"
+                                            onClick={() => handleDeleteStagedItem(idx)}
+                                            title="Remove this item"
+                                          >
+                                            ✕
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+
+                                    <tr className="table-active-input-row">
+                                      <td style={{ textAlign: "center", fontWeight: "700", color: "#64748b" }}>
+                                        {stagedDailyInputs.length + 1}
+                                      </td>
+                                      <td className="table-item-name-cell" title={formValues.item || "Select raw material from above"}>
+                                        {formValues.item ? (
+                                          <div className="table-active-item-badge">
+                                            <span className="table-active-item-text">{formValues.item}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="table-active-item-placeholder">
+                                            (Select above)
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="numeric-cell">
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          min="0.0001"
+                                          placeholder="0.00"
+                                          className="table-input table-qty-input numeric-input"
+                                          value={formValues.quantity ?? ""}
+                                          onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                        />
+                                      </td>
+                                      <td>
+                                        <select
+                                          className="table-input table-unit-select"
+                                          value={formValues.unit || "num"}
+                                          onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                        >
+                                          <option value="num">num</option>
+                                          <option value="kg">kg</option>
+                                          <option value="litre">litre</option>
+                                          <option value="mtrs">mtrs</option>
+                                          <option value="other">other</option>
+                                        </select>
+                                      </td>
+                                      <td className="numeric-cell">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          placeholder="0.00"
+                                          className="table-input table-rate-input numeric-input"
+                                          value={formValues.rate ?? ""}
+                                          onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                        />
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell">
+                                        ₹{Number(formValues.basic_value || 0).toFixed(2)}
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell">
+                                        ₹{Number(formValues.discount_amount || 0).toFixed(2)}
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell">
+                                        ₹{Number(formValues.amount || 0).toFixed(2)}
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell">
+                                        ₹{Number(formValues.cgst_amount || 0).toFixed(2)}
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell">
+                                        ₹{Number(formValues.ut_sgst_amount || 0).toFixed(2)}
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell">
+                                        ₹{Number(formValues.igst_amount || 0).toFixed(2)}
+                                      </td>
+                                      <td className="numeric-cell table-calculated-cell staged-total-cell">
+                                        ₹{Number(formValues.total_amount || 0).toFixed(2)}
+                                      </td>
+                                      <td style={{ textAlign: "center" }}>
+                                        {editingRecord ? (
+                                          <span style={{ fontSize: "11px", color: "#64748b" }}>Editing</span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="table-btn-add-more"
+                                            onClick={handleAddMoreDailyInput}
+                                            title="Add this raw material row to the table"
+                                          >
+                                            + Add
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="staged-table-footer">
+                                      <td colSpan={2}>
+                                        <strong>Total ({stagedDailyInputs.length})</strong>
+                                      </td>
+                                      <td className="numeric-cell">
+                                        <strong>
+                                          {Number.isInteger(stagedTotals.quantity)
+                                            ? String(stagedTotals.quantity)
+                                            : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                        </strong>
+                                      </td>
+                                      <td>—</td>
+                                      <td>—</td>
+                                      <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
+                                      <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
+                                      <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
+                                      <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
+                                      <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
+                                      <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                      <td className="numeric-cell staged-total-cell"><strong>₹{stagedTotals.total_amount.toFixed(2)}</strong></td>
+                                      <td>—</td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            </div>
+
+                            {remarksFields.length > 0 && (
+                              <div className="remarks-fields-row">
+                                {remarksFields.map(renderField)}
+                              </div>
+                            )}
+                          </>
+                        );
+                      }
+
 
                       return (
                         <>
@@ -4352,6 +6019,7 @@ async function handleDeleteSelected() {
                         setIsFormOpen(false);
                         setEditingRecord(null);
                         setFormValues({});
+                        setStagedDailyInputs([]);
                         setProductSaveConfirm(null);
                       }}
                       type="button"
@@ -4366,22 +6034,16 @@ async function handleDeleteSelected() {
                     >
                       Clear
                     </button>
-                    {activeSection === "dailyInputs" && !editingRecord && (
-                      <button
-                        className="secondary-action add-more-action"
-                        disabled={isSaving || isLookupLoading || Boolean(activeLookupError)}
-                        onClick={() => submitForm(true)}
-                        type="button"
-                      >
-                        {isSaving ? "Saving…" : "Add More"}
-                      </button>
-                    )}
                     <button
                       className="primary-action"
                       disabled={isSaving || isLookupLoading || Boolean(activeLookupError)}
                       type="submit"
                     >
-                      {isSaving ? "Saving…" : "Save"}
+                      {isSaving
+                        ? "Saving to DB…"
+                        : activeSection === "dailyInputs" && !editingRecord && stagedDailyInputs.length > 0
+                          ? `Save All (${stagedDailyInputs.length + ((formValues.raw_material_id || formValues.product_id || formValues.item) && Number(formValues.quantity) > 0 ? 1 : 0)})`
+                          : "Save"}
                     </button>
                   </div>
                 </form>
@@ -4625,8 +6287,30 @@ async function handleDeleteSelected() {
                             <option value="kg">kg</option>
                             <option value="litre">litre</option>
                             <option value="mtrs">mtrs</option>
+                            <option value="other">other</option>
                           </select>
                         </label>
+
+                        {quickAddRawMaterialModal.unit === "other" && (
+                          <label className="quick-rm-field" htmlFor="qrm-unit-other">
+                            Specify Unit *
+                            <input
+                              id="qrm-unit-other"
+                              type="text"
+                              required
+                              disabled={isSavingQuickRm}
+                              value={quickAddRawMaterialModal.unit_other || ""}
+                              onChange={(e) =>
+                                setQuickAddRawMaterialModal((prev) => ({
+                                  ...prev,
+                                  unit_other: e.target.value,
+                                }))
+                              }
+                              placeholder="e.g. rolls, bags, cartons"
+                              autoFocus
+                            />
+                          </label>
+                        )}
 
                         <label className="quick-rm-field" htmlFor="qrm-rate">
                           Rate
@@ -4875,8 +6559,30 @@ async function handleDeleteSelected() {
                             <option value="element">element</option>
                             <option value="welded element">welded element</option>
                             <option value="capacitor">capacitor</option>
+                            <option value="other">other</option>
                           </select>
                         </label>
+
+                        {quickAddProductModal.type === "other" && (
+                          <label className="quick-rm-field" htmlFor="qprd-type-other">
+                            Specify Product Type *
+                            <input
+                              id="qprd-type-other"
+                              type="text"
+                              required
+                              disabled={isSavingQuickPrd}
+                              value={quickAddProductModal.type_other || ""}
+                              onChange={(e) =>
+                                setQuickAddProductModal((prev) => ({
+                                  ...prev,
+                                  type_other: e.target.value,
+                                }))
+                              }
+                              placeholder="e.g. sensor, relay, module"
+                              autoFocus
+                            />
+                          </label>
+                        )}
 
                         {quickAddProductModal.product_mode === "with_zach_code" && (
                           <label className="quick-rm-field" htmlFor="qprd-zach">
@@ -4986,6 +6692,224 @@ async function handleDeleteSelected() {
                           type="submit"
                         >
                           {isSavingQuickPrd ? "Saving Product…" : "Save & Select Product"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {quickAddSupplierModal && (
+                <div
+                  aria-labelledby="quick-sup-title"
+                  aria-modal="true"
+                  className="modal-overlay quick-rm-overlay"
+                  onClick={() => {
+                    if (!isSavingQuickSup) setQuickAddSupplierModal(null);
+                  }}
+                  role="presentation"
+                >
+                  <div
+                    className="modal-dialog quick-rm-dialog"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                  >
+                    <div className="quick-rm-header">
+                      <div className="quick-rm-icon-wrap" style={{ background: "rgba(14, 165, 233, 0.15)", color: "#0284c7" }}>
+                        <span className="quick-rm-icon">🏢</span>
+                      </div>
+                      <div className="quick-rm-header-text">
+                        <h2 id="quick-sup-title">Add Supplier</h2>
+                        <p className="quick-rm-sub">
+                          Enter details to add this supplier. After saving, you will return directly to your form with this supplier selected.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="quick-rm-close-btn"
+                        disabled={isSavingQuickSup}
+                        onClick={() => setQuickAddSupplierModal(null)}
+                        aria-label="Close"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    {quickSupError && (
+                      <p className="workspace-error quick-rm-error" role="alert">
+                        {quickSupError}
+                      </p>
+                    )}
+
+                    <form onSubmit={handleSaveQuickSupplier} className="quick-rm-form">
+                      <div className="quick-rm-grid">
+                        <label className="field-wide">
+                          <span className="field-label-text">Company Name *</span>
+                          <input
+                            type="text"
+                            required
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.company_name}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                company_name: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. Acme Industries Ltd."
+                            autoFocus
+                          />
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">Contact Person</span>
+                          <input
+                            type="text"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.contact_person}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                contact_person: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. John Doe"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">Phone</span>
+                          <input
+                            type="text"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.phone}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                phone: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. +91 9876543210"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">Email</span>
+                          <input
+                            type="email"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.email}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                email: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. contact@supplier.com"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">City</span>
+                          <input
+                            type="text"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.city}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                city: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. Pune"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">State</span>
+                          <select
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.state}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                state: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Select state...</option>
+                            {INDIAN_STATES.map((st) => (
+                              <option key={st} value={st}>
+                                {st}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">Pincode</span>
+                          <input
+                            type="text"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.pincode}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                pincode: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. 411001"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="field-label-text">GST Number</span>
+                          <input
+                            type="text"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.gst_number}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                gst_number: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. 27ABCDE1234F1Z5"
+                          />
+                        </label>
+
+                        <label className="field-wide">
+                          <span className="field-label-text">Address</span>
+                          <input
+                            type="text"
+                            disabled={isSavingQuickSup}
+                            value={quickAddSupplierModal.address}
+                            onChange={(e) =>
+                              setQuickAddSupplierModal((prev) => ({
+                                ...prev,
+                                address: e.target.value,
+                              }))
+                            }
+                            placeholder="Street address / area"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="form-actions quick-rm-actions">
+                        <button
+                          className="secondary-action"
+                          disabled={isSavingQuickSup}
+                          onClick={() => setQuickAddSupplierModal(null)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="primary-action"
+                          disabled={isSavingQuickSup}
+                          type="submit"
+                        >
+                          {isSavingQuickSup ? "Saving Supplier…" : "Save & Select Supplier"}
                         </button>
                       </div>
                     </form>
@@ -5173,7 +7097,8 @@ async function handleDeleteSelected() {
       </td>
 
                           {activeConfig.columns.map(([key]) => {
-                            const cellValue = getRelatedCompanyName(key, record[key], record) ?? record[key];
+                            const rawVal = getRecordFieldValue(record, key);
+                            const cellValue = getRelatedCompanyName(key, rawVal, record) ?? rawVal;
                             return (
                               <td key={key} title={typeof cellValue === "string" ? cellValue : undefined}>
                                 {formatCell(cellValue)}
@@ -5187,7 +7112,6 @@ async function handleDeleteSelected() {
                                   setPageError("");
                                   setNotice("");
                                   setEditingRecord(record);
-                                  setFormType(record.type || (activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : "raw_material"));
 
                                   const editValues = {};
                                   const fields =
@@ -5216,6 +7140,28 @@ async function handleDeleteSelected() {
                                       editValues[field.name] = record.element_id ?? "";
                                     } else if (field.name === "welded_element_id") {
                                       editValues[field.name] = record.welded_element_id ?? "";
+                                    } else if (field.type === "select") {
+                                      const rawVal = record[field.name];
+                                      const standardOptions = (field.options || [])
+                                        .filter((opt) => opt.value !== "other")
+                                        .map((opt) => String(opt.value).toLowerCase());
+                                      if (rawVal !== undefined && rawVal !== null && rawVal !== "") {
+                                        const strVal = String(rawVal).trim();
+                                        if (standardOptions.includes(strVal.toLowerCase())) {
+                                          const matching = (field.options || []).find((opt) => String(opt.value).toLowerCase() === strVal.toLowerCase());
+                                          editValues[field.name] = matching ? matching.value : strVal;
+                                          editValues[`${field.name}_other`] = "";
+                                        } else if ((field.options || []).some((opt) => opt.value === "other")) {
+                                          editValues[field.name] = "other";
+                                          editValues[`${field.name}_other`] = strVal;
+                                        } else {
+                                          editValues[field.name] = strVal;
+                                          editValues[`${field.name}_other`] = "";
+                                        }
+                                      } else {
+                                        editValues[field.name] = "";
+                                        editValues[`${field.name}_other`] = "";
+                                      }
                                     } else {
                                       editValues[field.name] = record[field.name] ?? "";
                                     }
@@ -5232,17 +7178,41 @@ async function handleDeleteSelected() {
                                     editValues.raw_material_id = record.raw_material_id ?? "";
                                     editValues.product_id = record.product_id ?? "";
                                     editValues.element_id = record.element_id ?? "";
+                                    editValues.supplier_id = record.supplier_id ?? "";
                                   }
+
+                                  setFormType(
+                                    editValues.type ||
+                                    record.type ||
+                                    (activeSection === "costData"
+                                      ? "Basic"
+                                      : activeSection === "products"
+                                        ? "element"
+                                        : "raw_material")
+                                  );
 
                                   // Preserve daily input's own saved values without overwriting with master raw material / element
                                   if (record.type === "raw_material" || record.type === "element") {
                                     if (record.item) editValues.item = record.item;
-                                    if (record.unit) editValues.unit = record.unit;
+                                    if (record.unit) {
+                                      const stdUnits = ["num", "kg", "litre", "mtrs"];
+                                      if (stdUnits.includes(String(record.unit).toLowerCase())) {
+                                        editValues.unit = record.unit;
+                                        editValues.unit_other = "";
+                                      } else {
+                                        editValues.unit = "other";
+                                        editValues.unit_other = record.unit;
+                                      }
+                                    }
                                     if (record.rate !== undefined && record.rate !== null && record.rate !== "") {
                                       editValues.rate = record.rate;
                                     } else if (record.amount && record.quantity) {
                                       editValues.rate = Number((Number(record.amount) / Number(record.quantity)).toFixed(2));
                                     }
+                                    const calcQty = Number(record.quantity) || 0;
+                                    const calcRate = Number(editValues.rate !== undefined && editValues.rate !== "" ? editValues.rate : record.rate) || 0;
+                                    const calcBasic = Number((calcQty * calcRate).toFixed(2));
+                                    editValues.basic_value = record.basic_value !== undefined && record.basic_value !== null && record.basic_value !== "" ? record.basic_value : calcBasic;
                                     if (record.discount_percent !== undefined && record.discount_percent !== null && record.discount_percent !== "") {
                                       editValues.discount_percent = record.discount_percent;
                                     } else if (record.type === "raw_material") {
@@ -5252,6 +7222,13 @@ async function handleDeleteSelected() {
                                       if (matchedRm && matchedRm.discount_percent !== undefined && matchedRm.discount_percent !== null) {
                                         editValues.discount_percent = matchedRm.discount_percent;
                                       }
+                                    }
+                                    if (record.discount_amount !== undefined && record.discount_amount !== null && record.discount_amount !== "") {
+                                      editValues.discount_amount = record.discount_amount;
+                                    } else if (calcBasic && editValues.discount_percent) {
+                                      editValues.discount_amount = Number(((calcBasic * Number(editValues.discount_percent)) / 100).toFixed(2));
+                                    } else {
+                                      editValues.discount_amount = 0;
                                     }
                                     if (record.amount && Number(record.amount) > 0) {
                                       if (record.cgst_amount) {
@@ -5271,6 +7248,10 @@ async function handleDeleteSelected() {
                                     editValues.hsn_code = details.hsn_code || "";
                                     editValues.unit = details.unit || record.unit || "";
                                     editValues.rate = details.rate ?? record.rate ?? "";
+                                    const otherQty = Number(record.quantity) || 0;
+                                    const otherRate = Number(editValues.rate) || 0;
+                                    const otherBasic = Number((otherQty * otherRate).toFixed(2));
+                                    editValues.basic_value = details.basic_value ?? record.basic_value ?? otherBasic;
                                     editValues.supplier_company_name = details.supplier_company_name || details.company_name || "";
                                     editValues.supplier_contact_person = details.supplier_contact_person || details.contact_person || "";
                                     editValues.supplier_email = details.supplier_email || details.email || "";
@@ -5278,11 +7259,19 @@ async function handleDeleteSelected() {
                                     editValues.supplier_address = details.supplier_address || details.address || "";
                                     editValues.supplier_city = details.supplier_city || details.city || "";
                                     editValues.supplier_state = details.supplier_state || details.state || "";
+                                    editValues.supplier_pincode = details.supplier_pincode || details.pincode || "";
                                     editValues.supplier_gst_number = details.supplier_gst_number || details.gst_number || "";
                                     if (details.discount_percent !== undefined && details.discount_percent !== null) {
                                       editValues.discount_percent = details.discount_percent;
                                     } else if (record.discount_percent !== undefined && record.discount_percent !== null) {
                                       editValues.discount_percent = record.discount_percent;
+                                    }
+                                    if (details.discount_amount !== undefined && details.discount_amount !== null) {
+                                      editValues.discount_amount = details.discount_amount;
+                                    } else if (record.discount_amount !== undefined && record.discount_amount !== null) {
+                                      editValues.discount_amount = record.discount_amount;
+                                    } else if (otherBasic && editValues.discount_percent) {
+                                      editValues.discount_amount = Number(((otherBasic * Number(editValues.discount_percent)) / 100).toFixed(2));
                                     }
                                     if (details.cgst_percent !== undefined && details.cgst_percent !== null) {
                                       editValues.cgst_percent = details.cgst_percent;
@@ -5899,6 +7888,7 @@ async function handleDeleteSelected() {
                 </div>
               )}
             </section>
+          </ErrorBoundary>
           )}
         </div>
       </section>
@@ -5927,9 +7917,7 @@ function Dashboard({
     <section aria-labelledby="page-title" className="section-page">
       <div className="page-heading dashboard-heading">
         <div>
-          <span className="eyebrow">OVERVIEW</span>
-          <h1 id="page-title">Good day, {user.first_name}</h1>
-          <p>Here’s what’s happening in your workspace.</p>
+          <h1 id="page-title">Oyster Electronics</h1>
         </div>
         <div className="dashboard-heading-actions">
           <span className="role-badge">{user.role}</span>
@@ -5981,16 +7969,7 @@ function Dashboard({
         </div>
       </div>
 
-      <div className="dashboard-note">
-        <span className="note-icon" aria-hidden="true">i</span>
-        <div>
-          <strong>Signed in as {user.role}</strong>
-          <p>
-            Your workspace sections are available according to your account
-            permissions.
-          </p>
-        </div>
-      </div>
+      
     </section>
   );
 }

@@ -7,10 +7,6 @@ class CostData(Base):
     __tablename__ = "cost_data"
     __table_args__ = (
         UniqueConstraint("code", name="uq_cost_data_code"),
-        CheckConstraint(
-            "type IS NULL OR type IN ('Basic', 'Element', 'basic', 'element')",
-            name="cost_data_type_check",
-        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)

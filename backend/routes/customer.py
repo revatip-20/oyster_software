@@ -18,7 +18,7 @@ router = APIRouter(tags=["customers"])
     response_model=list[CustomerRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def get_customers(db: Session = Depends(get_db)):
+async def get_customers(db: Session = Depends(get_db)):
     return db.scalars(
         select(Customer)
         .where(Customer.deleted_at.is_(None))
@@ -32,12 +32,16 @@ def get_customers(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
+async def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     data = customer.model_dump()
     code = get_next_resource_code(db, Customer, Customer.code, "CUST")
     new_customer = Customer(code=code, **data)
     db.add(new_customer)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(new_customer)
     return new_customer
 
@@ -47,7 +51,7 @@ def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     response_model=CustomerRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depends(get_db)):
+async def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depends(get_db)):
     customer = db.query(Customer).filter(
         Customer.id == customer_id,
         Customer.deleted_at.is_(None),
@@ -62,7 +66,11 @@ def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depend
     for field, value in changes.items():
         setattr(customer, field, value)
     customer.updated_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(customer)
     return customer
 
@@ -72,7 +80,7 @@ def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depend
     response_model=CustomerRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+async def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     customer = db.query(Customer).filter(
         Customer.id == customer_id,
         Customer.deleted_at.is_(None),
@@ -83,6 +91,10 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     customer.deleted_at = now
     customer.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(customer)
     return customer

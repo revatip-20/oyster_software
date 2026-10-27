@@ -12,7 +12,14 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg2://postgres:postgres@localhost:5432/oyster_db",
 )
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,
+    max_overflow=20,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_timeout=30,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -306,7 +313,7 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE cost_data ADD COLUMN IF NOT EXISTS type VARCHAR(50)",
         "ALTER TABLE cost_data ALTER COLUMN type DROP NOT NULL",
         "ALTER TABLE cost_data DROP CONSTRAINT IF EXISTS cost_data_type_check",
-        "ALTER TABLE cost_data ADD CONSTRAINT cost_data_type_check CHECK (type IS NULL OR type IN ('Basic', 'Element', 'basic', 'element'))",
+        "ALTER TABLE product DROP CONSTRAINT IF EXISTS product_type_check",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS raw_material_ids JSONB",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS element_id INTEGER REFERENCES product(id) ON DELETE SET NULL",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS welded_element_id INTEGER REFERENCES product(id) ON DELETE SET NULL",
@@ -315,6 +322,10 @@ def _drop_not_null_constraints(connection) -> None:
         "CREATE TABLE IF NOT EXISTS product_raw_material (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES product(id) ON DELETE CASCADE, raw_material_id INTEGER NOT NULL REFERENCES raw_material(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), CONSTRAINT uq_product_raw_material UNIQUE (product_id, raw_material_id))",
         "ALTER TABLE product_raw_material ADD COLUMN IF NOT EXISTS quantity NUMERIC(12, 4) DEFAULT 1",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS remarks TEXT",
+        "ALTER TABLE supplier ADD COLUMN IF NOT EXISTS pincode VARCHAR(20)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12, 2) DEFAULT 0",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS basic_value NUMERIC(12, 2) DEFAULT 0",
+        "ALTER TABLE daily_input ALTER COLUMN quantity TYPE NUMERIC(12, 4)",
     ]
     for stmt in ddl_statements:
         try:
@@ -373,5 +384,11 @@ def initialize_database():
 
 
 def get_db():
-    with SessionLocal() as session:
-        yield session
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

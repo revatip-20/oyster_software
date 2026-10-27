@@ -24,10 +24,6 @@ class Product(Base):
     __tablename__ = "product"
     __table_args__ = (
         UniqueConstraint("code", name="uq_product_code"),
-        CheckConstraint(
-            "type IS NULL OR type IN ('element', 'welded element', 'capacitor', 'Element', 'Welded Element', 'Capacitor')",
-            name="product_type_check",
-        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)

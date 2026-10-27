@@ -80,7 +80,7 @@ class ProductBase(BaseModel):
     def parse_raw_material_ids(cls, value):
         val = _empty_to_none(value)
         if val is None:
-            return None
+            return []
         if isinstance(val, (int, float)):
             return [int(val)]
         if isinstance(val, str):
@@ -95,14 +95,14 @@ class ProductBase(BaseModel):
                 except Exception:
                     continue
             return result
-        return None
+        return []
 
     @field_validator("raw_materials", mode="before")
     @classmethod
     def parse_raw_materials(cls, value):
         val = _empty_to_none(value)
         if val is None:
-            return None
+            return []
         if isinstance(val, (list, tuple)):
             items = []
             for item in val:
@@ -127,7 +127,7 @@ class ProductBase(BaseModel):
                     except Exception:
                         pass
             return items
-        return None
+        return []
 
     @field_validator("quantity", mode="before")
     @classmethod
@@ -154,10 +154,10 @@ class ProductRead(ProductBase):
     id: int
     code: str | None = None
     raw_material_id: int | None = None
-    raw_materials: list[ProductRawMaterialItem] = Field(default_factory=list)
-    raw_material_ids: list[int] = Field(default_factory=list)
+    raw_materials: list[ProductRawMaterialItem] | None = Field(default_factory=list)
+    raw_material_ids: list[int] | None = Field(default_factory=list)
     raw_material_name: str | None = None
-    raw_material_names: list[str] = Field(default_factory=list)
+    raw_material_names: list[str] | None = Field(default_factory=list)
     element_id: int | None = None
     element_name: str | None = None
     element_code: str | None = None
@@ -165,8 +165,8 @@ class ProductRead(ProductBase):
     welded_element_name: str | None = None
     welded_element_code: str | None = None
     component_name: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     deleted_at: datetime | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")

@@ -498,3 +498,6 @@ ALTER TABLE daily_input ADD CONSTRAINT daily_input_type_check CHECK (type IS NUL
 
 ALTER TABLE product ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150);
 ALTER TABLE product ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE;
+ALTER TABLE product DROP CONSTRAINT IF EXISTS product_type_check;
+ALTER TABLE cost_data DROP CONSTRAINT IF EXISTS cost_data_type_check;
+

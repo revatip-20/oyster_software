@@ -19,6 +19,7 @@ class SupplierCreate(BaseModel):
     address: str | None = None
     city: str | None = Field(default=None, max_length=100)
     state: str | None = Field(default=None, max_length=100)
+    pincode: str | None = Field(default=None, max_length=20)
     gst_number: str | None = Field(default=None, max_length=80)
 
     @field_validator(
@@ -29,6 +30,7 @@ class SupplierCreate(BaseModel):
         "address",
         "city",
         "state",
+        "pincode",
         "gst_number",
         mode="before",
     )
@@ -45,6 +47,7 @@ class SupplierUpdate(BaseModel):
     address: str | None = None
     city: str | None = Field(default=None, max_length=100)
     state: str | None = Field(default=None, max_length=100)
+    pincode: str | None = Field(default=None, max_length=20)
     gst_number: str | None = Field(default=None, max_length=80)
 
     model_config = ConfigDict(extra="ignore")
@@ -57,6 +60,7 @@ class SupplierUpdate(BaseModel):
         "address",
         "city",
         "state",
+        "pincode",
         "gst_number",
         mode="before",
     )
@@ -75,6 +79,7 @@ class SupplierRead(BaseModel):
     address: str | None = None
     city: str | None = None
     state: str | None = None
+    pincode: str | None = None
     gst_number: str | None = None
     created_at: datetime
     updated_at: datetime

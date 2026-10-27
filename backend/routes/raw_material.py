@@ -19,7 +19,7 @@ router = APIRouter(tags=["raw materials"])
     response_model=list[RawMaterialRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def get_raw_materials(db: Session = Depends(get_db)):
+async def get_raw_materials(db: Session = Depends(get_db)):
     return db.scalars(
         select(RawMaterial)
         .where(RawMaterial.deleted_at.is_(None))
@@ -33,7 +33,7 @@ def get_raw_materials(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db)):
+async def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db)):
     data = material.model_dump()
     code = get_next_resource_code(db, RawMaterial, RawMaterial.code, "R")
     new_material = RawMaterial(code=code, **data)
@@ -55,7 +55,7 @@ def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db))
     response_model=RawMaterialRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def edit_raw_material(
+async def edit_raw_material(
     material_id: int,
     update: RawMaterialUpdate,
     db: Session = Depends(get_db),
@@ -90,7 +90,7 @@ def edit_raw_material(
     response_model=RawMaterialRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def delete_raw_material(material_id: int, db: Session = Depends(get_db)):
+async def delete_raw_material(material_id: int, db: Session = Depends(get_db)):
     material = db.query(RawMaterial).filter(
         RawMaterial.id == material_id,
         RawMaterial.deleted_at.is_(None),
@@ -101,6 +101,10 @@ def delete_raw_material(material_id: int, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     material.deleted_at = now
     material.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(material)
     return material

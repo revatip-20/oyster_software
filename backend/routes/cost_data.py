@@ -19,7 +19,7 @@ router = APIRouter(tags=["cost_data"])
     response_model=list[CostDataRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def get_cost_data_list(db: Session = Depends(get_db)):
+async def get_cost_data_list(db: Session = Depends(get_db)):
     return db.scalars(
         select(CostData)
         .where(CostData.deleted_at.is_(None))
@@ -33,7 +33,7 @@ def get_cost_data_list(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def add_cost_data(cost_data_in: CostDataCreate, db: Session = Depends(get_db)):
+async def add_cost_data(cost_data_in: CostDataCreate, db: Session = Depends(get_db)):
     data = cost_data_in.model_dump()
     code = get_next_resource_code(db, CostData, CostData.code, "CD")
     new_cost_data = CostData(code=code, **data)
@@ -55,7 +55,7 @@ def add_cost_data(cost_data_in: CostDataCreate, db: Session = Depends(get_db)):
     response_model=CostDataRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def edit_cost_data(cost_data_id: int, update: CostDataUpdate, db: Session = Depends(get_db)):
+async def edit_cost_data(cost_data_id: int, update: CostDataUpdate, db: Session = Depends(get_db)):
     cost_data = db.query(CostData).filter(
         CostData.id == cost_data_id,
         CostData.deleted_at.is_(None),
@@ -86,7 +86,7 @@ def edit_cost_data(cost_data_id: int, update: CostDataUpdate, db: Session = Depe
     response_model=CostDataRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def delete_cost_data(cost_data_id: int, db: Session = Depends(get_db)):
+async def delete_cost_data(cost_data_id: int, db: Session = Depends(get_db)):
     cost_data = db.query(CostData).filter(
         CostData.id == cost_data_id,
         CostData.deleted_at.is_(None),
@@ -97,6 +97,10 @@ def delete_cost_data(cost_data_id: int, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     cost_data.deleted_at = now
     cost_data.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(cost_data)
     return cost_data

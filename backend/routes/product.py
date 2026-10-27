@@ -16,7 +16,24 @@ router = APIRouter(tags=["products"])
 
 
 def _populate_product_read(p: Product, db: Session) -> ProductRead:
-    item = ProductRead.model_validate(p)
+    try:
+        item = ProductRead.model_validate(p)
+    except Exception:
+        item = ProductRead(
+            id=p.id,
+            code=p.code,
+            name=p.name,
+            type=p.type,
+            zach_code=p.zach_code,
+            has_zach_code=p.has_zach_code,
+            raw_material_id=p.raw_material_id,
+            element_id=p.element_id,
+            welded_element_id=p.welded_element_id,
+            quantity=p.quantity,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+            deleted_at=p.deleted_at,
+        )
     raw_material_items = []
 
     # 1. From relationship product_raw_materials
@@ -115,7 +132,7 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
     response_model=list[ProductRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def get_products(db: Session = Depends(get_db)):
+async def get_products(db: Session = Depends(get_db)):
     products = db.scalars(
         select(Product)
         .where(Product.deleted_at.is_(None))
@@ -130,7 +147,7 @@ def get_products(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
+async def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
     data = product_in.model_dump()
     raw_materials_input = data.pop("raw_materials", None)
     raw_material_ids = data.pop("raw_material_ids", None) or []
@@ -204,7 +221,7 @@ def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
     response_model=ProductRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def edit_product(product_id: int, update: ProductUpdate, db: Session = Depends(get_db)):
+async def edit_product(product_id: int, update: ProductUpdate, db: Session = Depends(get_db)):
     product = db.query(Product).filter(
         Product.id == product_id,
         Product.deleted_at.is_(None),
@@ -303,7 +320,7 @@ def edit_product(product_id: int, update: ProductUpdate, db: Session = Depends(g
     response_model=ProductRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-def delete_product(product_id: int, db: Session = Depends(get_db)):
+async def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(
         Product.id == product_id,
         Product.deleted_at.is_(None),
@@ -314,6 +331,10 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     product.deleted_at = now
     product.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(product)
     return _populate_product_read(product, db)

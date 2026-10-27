@@ -19,14 +19,16 @@ class DailyInput(Base):
     bill_no = Column(String(50), nullable=True)
     bill_date = Column(Date, nullable=True)
     item = Column(String(150), nullable=True)
-    quantity = Column(Integer, nullable=True)
+    quantity = Column(Numeric(12, 4), nullable=True)
     unit = Column(String(30), nullable=True)
     rate = Column(Numeric(12, 2), nullable=True)
+    basic_value = Column(Numeric(12, 2), nullable=True, default=0)
     discount_percent = Column(Numeric(5, 2), nullable=True, default=0)
     hsn_code = Column(String(20), nullable=True)
     type = Column(String(20), nullable=True)
 
     # Amount and GST fields
+    discount_amount = Column(Numeric(12, 2), nullable=True, default=0)
     amount = Column(Numeric(12, 2), nullable=True, default=0)
     cgst_amount = Column(Numeric(12, 2), nullable=True, default=0)
     ut_sgst_amount = Column(Numeric(12, 2), nullable=True, default=0)

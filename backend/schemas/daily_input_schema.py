@@ -27,12 +27,14 @@ class DailyInputFields(BaseModel):
     bill_no: str | None = Field(default=None, max_length=50)
     bill_date: date | None = None
     item: str | None = Field(default=None, max_length=150)
-    quantity: int | None = None
+    quantity: Decimal | None = None
     unit: str | None = Field(default=None, max_length=30)
     rate: Decimal | None = Field(default=None, ge=0)
+    basic_value: Decimal | None = Field(default=Decimal("0"), ge=0)
     discount_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
     hsn_code: str | None = Field(default=None, max_length=20)
     type: Literal["raw_material", "product", "element", "other"] | None = "raw_material"
+    discount_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
     amount: Decimal | None = Field(default=Decimal("0"), ge=0)
     cgst_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
     ut_sgst_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
@@ -58,7 +60,7 @@ class DailyInputFields(BaseModel):
 
 class DailyInputCreate(DailyInputFields):
     type: Literal["raw_material", "product", "element", "other"] = "raw_material"
-    quantity: int = Field(..., gt=0)
+    quantity: Decimal = Field(..., gt=0)
 
 
 class DailyInputUpdate(BaseModel):
@@ -76,12 +78,14 @@ class DailyInputUpdate(BaseModel):
     bill_no: str | None = Field(default=None, max_length=50)
     bill_date: date | None = None
     item: str | None = Field(default=None, max_length=150)
-    quantity: int | None = None
+    quantity: Decimal | None = None
     unit: str | None = Field(default=None, max_length=30)
     rate: Decimal | None = Field(default=None, ge=0)
+    basic_value: Decimal | None = Field(default=None, ge=0)
     discount_percent: Decimal | None = Field(default=None, ge=0, le=100)
     hsn_code: str | None = Field(default=None, max_length=20)
     type: Literal["raw_material", "product", "element", "other"] | None = None
+    discount_amount: Decimal | None = Field(default=None, ge=0)
     amount: Decimal | None = Field(default=None, ge=0)
     cgst_amount: Decimal | None = Field(default=None, ge=0)
     ut_sgst_amount: Decimal | None = Field(default=None, ge=0)
@@ -112,12 +116,14 @@ class DailyInputRead(BaseModel):
     bill_no: str | None = None
     bill_date: date | None = None
     item: str | None = None
-    quantity: int | None = None
+    quantity: Decimal | None = None
     unit: str | None = None
     rate: Decimal | None = None
+    basic_value: Decimal | None = None
     discount_percent: Decimal | None = None
     hsn_code: str | None = None
     type: Literal["raw_material", "product", "element", "other"] | None = None
+    discount_amount: Decimal | None = None
     amount: Decimal | None = None
     cgst_amount: Decimal | None = None
     ut_sgst_amount: Decimal | None = None

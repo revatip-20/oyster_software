@@ -41,6 +41,8 @@ def recalculate_amounts(
         amount + cgst_amount + ut_sgst_amount + igst_amount
     ).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
+    entry.basic_value = gross_amount
+    entry.discount_amount = discount_amount
     entry.amount = amount
     entry.cgst_amount = cgst_amount
     entry.ut_sgst_amount = ut_sgst_amount

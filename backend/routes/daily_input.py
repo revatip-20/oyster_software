@@ -23,7 +23,7 @@ permissions = [Depends(require_roles("admin", "supervisor"))]
 
 
 @router.get("/", response_model=list[DailyInputRead], dependencies=permissions)
-def get_daily_inputs(db: Session = Depends(get_db)):
+async def get_daily_inputs(db: Session = Depends(get_db)):
     return db.scalars(
         select(DailyInput)
         .where(DailyInput.deleted_at.is_(None))
@@ -32,7 +32,7 @@ def get_daily_inputs(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=DailyInputRead, status_code=status.HTTP_201_CREATED)
-def add_daily_input(
+async def add_daily_input(
     entry: DailyInputCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "supervisor")),
@@ -65,9 +65,15 @@ def add_daily_input(
                 data["element_id"] = matched_prd.id
         if not (data.get("product_id") or data.get("element_id")):
             raise HTTPException(status_code=422, detail="Product is required")
+    if data.get("type") in ("raw_material", "product", "element"):
+        if not data.get("supplier_id") or int(data.get("supplier_id") or 0) <= 0:
+            raise HTTPException(status_code=422, detail="Supplier is required")
     if data.get("type") == "other":
         if not data.get("item"):
             raise HTTPException(status_code=422, detail="Material / item name is required")
+        od = data.get("other_details") or {}
+        if not (od.get("supplier_company_name") or od.get("company_name") or data.get("supplier_company_name")):
+            raise HTTPException(status_code=422, detail="Supplier company name is required")
 
     if data.get("type") == "raw_material":
         data["customer_id"] = None
@@ -90,6 +96,7 @@ def add_daily_input(
                 if data.get("discount_percent") is None and rm.discount_percent is not None:
                     data["discount_percent"] = rm.discount_percent
     elif data.get("type") in ("product", "element"):
+        data["customer_id"] = None
         data["raw_material_id"] = None
         target_id = data.get("product_id") or data.get("element_id")
         data["product_id"] = target_id
@@ -131,7 +138,7 @@ def add_daily_input(
 
 @router.patch("/{entry_id}", response_model=DailyInputRead, dependencies=permissions)
 @router.put("/{entry_id}", response_model=DailyInputRead, dependencies=permissions)
-def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depends(get_db)):
+async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depends(get_db)):
     entry = db.query(DailyInput).filter(
         DailyInput.id == entry_id,
         DailyInput.deleted_at.is_(None),
@@ -176,6 +183,10 @@ def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depe
                 entry.element_id = matched_prd.id
         if not effective_prd_id:
             raise HTTPException(status_code=422, detail="Product is required")
+    if effective_type in ("raw_material", "product", "element"):
+        effective_supplier_id = changes.get("supplier_id") if "supplier_id" in changes else entry.supplier_id
+        if not effective_supplier_id or int(effective_supplier_id or 0) <= 0:
+            raise HTTPException(status_code=422, detail="Supplier is required")
     if effective_type == "other" and not effective_item:
         raise HTTPException(status_code=422, detail="Material / item name is required")
 
@@ -212,6 +223,7 @@ def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depe
                 if "discount_percent" not in changes and entry.discount_percent is None and rm.discount_percent is not None:
                     entry.discount_percent = rm.discount_percent
     elif entry.type in ("product", "element"):
+        entry.customer_id = None
         entry.raw_material_id = None
         target_id = changes.get("product_id", changes.get("element_id", entry.product_id or entry.element_id))
         entry.product_id = target_id
@@ -280,12 +292,12 @@ def _soft_delete_daily_inputs(entry_ids: list[int], db: Session):
 
 
 @router.delete("/{entry_id}", dependencies=permissions)
-def delete_daily_input(entry_id: int, db: Session = Depends(get_db)):
+async def delete_daily_input(entry_id: int, db: Session = Depends(get_db)):
     return _soft_delete_daily_inputs([entry_id], db)
 
 
 @router.delete("/", dependencies=permissions)
-def delete_daily_inputs(
+async def delete_daily_inputs(
     payload: DailyInputBulkDelete,
     db: Session = Depends(get_db),
 ):
