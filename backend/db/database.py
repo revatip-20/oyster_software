@@ -326,6 +326,19 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12, 2) DEFAULT 0",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS basic_value NUMERIC(12, 2) DEFAULT 0",
         "ALTER TABLE daily_input ALTER COLUMN quantity TYPE NUMERIC(12, 4)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_type VARCHAR(50) DEFAULT 'supplier'",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS cgst_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS ut_sgst_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS igst_percent NUMERIC(5, 2) DEFAULT 0",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_company_name VARCHAR(150)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_contact_person VARCHAR(150)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_phone VARCHAR(50)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_email VARCHAR(150)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_address TEXT",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_city VARCHAR(100)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_state VARCHAR(100)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_pincode VARCHAR(20)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_gst_number VARCHAR(80)",
     ]
     for stmt in ddl_statements:
         try:

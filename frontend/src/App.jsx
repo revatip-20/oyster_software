@@ -2088,6 +2088,23 @@ const toggleSelectAll = (rows) => {
     }));
   }
 
+  function handleRawMaterialTypeSelect(rmType) {
+    setPageError("");
+    setFormValues((prev) => {
+      const isOther = rmType === "other";
+      return {
+        ...prev,
+        raw_material_type: rmType,
+        type: isOther ? "other" : "raw_material",
+        raw_material_id: isOther ? "" : prev.raw_material_id,
+        product_id: "",
+        element_id: "",
+        item: isOther ? (prev.material_name || prev.item || "") : prev.item,
+        material_name: isOther ? (prev.material_name || prev.item || "") : prev.material_name,
+      };
+    });
+  }
+
   function handleDailyInputItemSelect({ type, id, item }) {
     setPageError("");
     if (type === "raw_material") {
@@ -2099,11 +2116,13 @@ const toggleSelectAll = (rows) => {
         const next = {
           ...prev,
           type: "raw_material",
+          raw_material_type: "raw_material",
           raw_material_id: validRmId,
           product_id: "",
           element_id: "",
           customer_id: "",
           item: selectedRm?.material_name || item?.material_name || item?.name || prev.item || "",
+          material_name: selectedRm?.material_name || item?.material_name || item?.name || prev.material_name || "",
           unit: selectedRm?.unit ?? item?.unit ?? prev.unit ?? "",
           hsn_code: selectedRm?.hsn_code ?? item?.hsn_code ?? prev.hsn_code ?? "",
           rate: (selectedRm?.rate !== undefined && selectedRm?.rate !== null && selectedRm?.rate !== "") ? selectedRm.rate : prev.rate,
@@ -2145,6 +2164,7 @@ const toggleSelectAll = (rows) => {
         element_id: validPrdId,
         raw_material_id: "",
         item: selectedPrd?.name || item?.name || prev.item || "",
+        material_name: selectedPrd?.name || item?.name || prev.material_name || "",
         unit: prev.unit || "num",
       }));
     }
@@ -2157,6 +2177,7 @@ const toggleSelectAll = (rows) => {
       product_id: "",
       element_id: "",
       item: "",
+      material_name: "",
       unit: prev.type === "product" ? "num" : "",
       hsn_code: "",
       rate: "",
@@ -2185,15 +2206,38 @@ const toggleSelectAll = (rows) => {
 
   function handleAddMoreDailyInput() {
     setPageError("");
-    const typeVal = formValues.type || formType || "raw_material";
+    const supplierType = formValues.supplier_type || "supplier";
+    const rawMaterialType = formValues.raw_material_type || (formValues.type === "other" ? "other" : "raw_material");
+    const typeVal = supplierType === "general"
+      ? (rawMaterialType === "other" ? "other" : "raw_material")
+      : (rawMaterialType === "other" ? "other" : (formValues.type || formType || "raw_material"));
     let itemName = "";
     let rmId = null;
     let prdId = null;
 
-    if (typeVal === "raw_material") {
+    if (supplierType === "general") {
+      itemName = String(formValues.material_name || formValues.item || "").trim();
+      if (!itemName) {
+        setPageError(
+          rawMaterialType === "other"
+            ? "Please enter a raw material name."
+            : "Please search and select a raw material from the list."
+        );
+        return;
+      }
+      // In general mode, do not link or save to raw_material table
+      rmId = null;
+    } else if (rawMaterialType === "other" || typeVal === "other") {
+      itemName = String(formValues.material_name || formValues.item || "").trim();
+      if (!itemName) {
+        setPageError("Raw material name is required.");
+        return;
+      }
+      rmId = null;
+    } else if (typeVal === "raw_material") {
       rmId = formValues.raw_material_id ? Number(formValues.raw_material_id) : null;
       const matchedRm = (lookupOptions.rawMaterials || []).find((m) => Number(m.id) === rmId);
-      itemName = matchedRm?.material_name || formValues.item || "";
+      itemName = matchedRm?.material_name || formValues.item || formValues.material_name || "";
       if (!rmId && itemName) {
         const found = (lookupOptions.rawMaterials || []).find(
           (m) => String(m.material_name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
@@ -2256,12 +2300,14 @@ const toggleSelectAll = (rows) => {
     const newRow = {
       _tempId: Date.now() + Math.random(),
       item: itemName,
+      supplier_type: supplierType,
       type: typeVal,
+      raw_material_type: rawMaterialType,
       raw_material_id: rmId,
       product_id: prdId,
       element_id: prdId,
       quantity: qty,
-      unit: formValues.unit || "",
+      unit: formValues.unit === "other" && formValues.unit_other ? formValues.unit_other : (formValues.unit || ""),
       rate,
       basic_value: basicValue,
       discount_percent: discountPercent,
@@ -2276,14 +2322,41 @@ const toggleSelectAll = (rows) => {
       total_amount: invoiceValue,
       hsn_code: formValues.hsn_code || "",
       remarks: formValues.remarks || "",
-      other_details: formValues.other_details || null,
+      supplier_company_name: formValues.supplier_company_name || "",
+      supplier_contact_person: formValues.supplier_contact_person || "",
+      supplier_phone: formValues.supplier_phone || "",
+      supplier_email: formValues.supplier_email || "",
+      supplier_address: formValues.supplier_address || "",
+      supplier_city: formValues.supplier_city || "",
+      supplier_state: formValues.supplier_state || "",
+      supplier_pincode: formValues.supplier_pincode || "",
+      supplier_gst_number: formValues.supplier_gst_number || "",
+      other_details: formValues.other_details || (supplierType === "general" ? {
+        material_name: itemName,
+        supplier_type: "general",
+        raw_material_type: rawMaterialType,
+        supplier_company_name: formValues.supplier_company_name || "",
+        supplier_contact_person: formValues.supplier_contact_person || "",
+        supplier_phone: formValues.supplier_phone || "",
+        supplier_email: formValues.supplier_email || "",
+        supplier_address: formValues.supplier_address || "",
+        supplier_city: formValues.supplier_city || "",
+        supplier_state: formValues.supplier_state || "",
+        supplier_pincode: formValues.supplier_pincode || "",
+        supplier_gst_number: formValues.supplier_gst_number || "",
+        cgst_percent: cgstPercent,
+        ut_sgst_percent: sgstPercent,
+        igst_percent: igstPercent,
+      } : null),
     };
 
     setStagedDailyInputs((prev) => [...prev, newRow]);
 
-    // Clear active item inputs, keep document info and supplier
+    // Clear active item inputs, keep document info and supplier type
     setFormValues((prev) => ({
       ...prev,
+      supplier_type: supplierType,
+      raw_material_type: rawMaterialType,
       raw_material_id: "",
       product_id: "",
       element_id: "",
@@ -2316,6 +2389,8 @@ const toggleSelectAll = (rows) => {
 
     setFormValues((prev) => ({
       ...prev,
+      supplier_type: itemToEdit.supplier_type || "supplier",
+      raw_material_type: itemToEdit.raw_material_type || (itemToEdit.type === "other" || !itemToEdit.raw_material_id ? "other" : "raw_material"),
       type: itemToEdit.type || "raw_material",
       raw_material_id: itemToEdit.raw_material_id || "",
       product_id: itemToEdit.product_id || "",
@@ -2338,6 +2413,15 @@ const toggleSelectAll = (rows) => {
       total_amount: itemToEdit.total_amount ?? "",
       hsn_code: itemToEdit.hsn_code || "",
       remarks: itemToEdit.remarks || "",
+      supplier_company_name: itemToEdit.supplier_company_name || "",
+      supplier_contact_person: itemToEdit.supplier_contact_person || "",
+      supplier_phone: itemToEdit.supplier_phone || "",
+      supplier_email: itemToEdit.supplier_email || "",
+      supplier_address: itemToEdit.supplier_address || "",
+      supplier_city: itemToEdit.supplier_city || "",
+      supplier_state: itemToEdit.supplier_state || "",
+      supplier_pincode: itemToEdit.supplier_pincode || "",
+      supplier_gst_number: itemToEdit.supplier_gst_number || "",
     }));
 
     setFormType(itemToEdit.type || "raw_material");
@@ -2456,6 +2540,80 @@ function handleFormFieldChange(name, value) {
     }
 
     // Auto-populate all master fields when raw_material_id is selected
+    if (name === "supplier_type") {
+      next.supplier_type = value;
+      if (value === "general") {
+        next.supplier_id = "";
+      }
+    }
+
+    if (name === "raw_material_type") {
+      next.raw_material_type = value;
+      if (value === "other") {
+        next.type = "other";
+        next.raw_material_id = "";
+        next.product_id = "";
+        next.element_id = "";
+      } else {
+        next.type = "raw_material";
+      }
+    }
+
+    if (name === "supplier_company_name") {
+      next.supplier_company_name = value;
+      const isGeneral = (next.supplier_type || formValues.supplier_type) === "general";
+      if (!isGeneral) {
+        const matchedSup = lookupOptions.suppliers?.find(
+          (s) => String(s.company_name || "").trim().toLowerCase() === String(value).trim().toLowerCase()
+        );
+        if (matchedSup) {
+          if (matchedSup.contact_person) next.supplier_contact_person = matchedSup.contact_person;
+          if (matchedSup.phone) next.supplier_phone = matchedSup.phone;
+          if (matchedSup.email) next.supplier_email = matchedSup.email;
+          if (matchedSup.address) next.supplier_address = matchedSup.address;
+          if (matchedSup.city) next.supplier_city = matchedSup.city;
+          if (matchedSup.state) next.supplier_state = matchedSup.state;
+          if (matchedSup.pincode) next.supplier_pincode = matchedSup.pincode;
+          if (matchedSup.gst_number) next.supplier_gst_number = matchedSup.gst_number;
+        }
+      }
+    }
+
+    if (name === "material_name") {
+      next.item = value;
+      next.material_name = value;
+      const isGeneral = (next.supplier_type || formValues.supplier_type) === "general";
+      if (isGeneral) {
+        next.raw_material_id = "";
+      } else {
+        const matchedRm = lookupOptions.rawMaterials?.find(
+          (m) => String(m.material_name || "").trim().toLowerCase() === String(value).trim().toLowerCase()
+        );
+        if (matchedRm) {
+          next.raw_material_id = matchedRm.id;
+          if (matchedRm.unit && (!next.unit || next.unit === "num")) next.unit = matchedRm.unit;
+          if (matchedRm.hsn_code && !next.hsn_code) next.hsn_code = matchedRm.hsn_code;
+          if (matchedRm.rate !== undefined && matchedRm.rate !== null && matchedRm.rate !== "" && (next.rate === "" || next.rate === undefined || next.rate === 0)) {
+            next.rate = matchedRm.rate;
+          }
+          if (matchedRm.discount_percent !== undefined && matchedRm.discount_percent !== null) {
+            next.discount_percent = matchedRm.discount_percent;
+          }
+          if (matchedRm.cgst_percent !== undefined && matchedRm.cgst_percent !== null) {
+            next.cgst_percent = matchedRm.cgst_percent;
+          }
+          if (matchedRm.ut_sgst_percent !== undefined && matchedRm.ut_sgst_percent !== null) {
+            next.ut_sgst_percent = matchedRm.ut_sgst_percent;
+          }
+          if (matchedRm.igst_percent !== undefined && matchedRm.igst_percent !== null) {
+            next.igst_percent = matchedRm.igst_percent;
+          }
+        } else {
+          next.raw_material_id = "";
+        }
+      }
+    }
+
     if (name === "raw_material_id") {
       const selectedRm = lookupOptions.rawMaterials?.find(
         (m) => String(m.id) === String(value)
@@ -2528,6 +2686,7 @@ function handleFormFieldChange(name, value) {
         "basic_value",
         "discount_percent",
         "discount_amount",
+        "material_name",
         "raw_material_id",
         "product_id",
         "element_id",
@@ -2561,6 +2720,7 @@ function handleFormFieldChange(name, value) {
         "amount",
         "discount_percent",
         "discount_amount",
+        "material_name",
         "cgst_percent",
         "ut_sgst_percent",
         "igst_percent",
@@ -2617,6 +2777,7 @@ function handleFormFieldChange(name, value) {
     }
     if (activeSection === "dailyInputs") {
       emptyValues.type = "";
+      emptyValues.supplier_type = "supplier";
       emptyValues.raw_material_id = "";
       emptyValues.product_id = "";
       emptyValues.element_id = "";
@@ -2926,6 +3087,7 @@ async function submitForm(isAddMore = false) {
             "product_id",
             "element_id",
             "supplier_id",
+            "supplier_type",
             "dc_no",
             "dc_date",
             "DC_no",
@@ -3070,35 +3232,47 @@ async function submitForm(isAddMore = false) {
     // 2. Prepare Daily Inputs payload & batch save for new entries
     // --------------------------------------------------
     if (activeSection === "dailyInputs" && !editingRecord) {
+      const supplierType = formValues.supplier_type || "supplier";
       const isOther = (formValues.type || formType) === "other";
       const suppId = formValues.supplier_id ? Number(formValues.supplier_id) : null;
       const suppCompName = String(formValues.supplier_company_name || "").trim();
 
-      if (!isOther && (!suppId || suppId <= 0)) {
-        setPageError("Supplier is compulsory. Please search and select a supplier from the list.");
-        setIsSaving(false);
-        return;
-      }
-      if (isOther && !suppCompName) {
-        setPageError("Supplier company name is compulsory.");
-        setIsSaving(false);
-        return;
+      if (supplierType !== "general") {
+        if (!isOther && (!suppId || suppId <= 0)) {
+          setPageError("Supplier is compulsory. Please search and select a supplier from the list.");
+          setIsSaving(false);
+          return;
+        }
+        if (isOther && !suppCompName) {
+          setPageError("Supplier company name is compulsory.");
+          setIsSaving(false);
+          return;
+        }
       }
 
       let itemsToSave = [...stagedDailyInputs];
 
       const hasActiveItem = Boolean(
-        (formValues.raw_material_id || formValues.product_id || formValues.item || (isOther && formValues.material_name)) &&
+        (formValues.raw_material_id || formValues.product_id || formValues.item || formValues.material_name) &&
         Number(formValues.quantity) > 0
       );
 
       if (hasActiveItem) {
-        const curType = formValues.type || formType || "raw_material";
-        let curItemName = formValues.item || "";
+        const curRmType = formValues.raw_material_type || (formValues.type === "other" ? "other" : "raw_material");
+        const curType = supplierType === "general"
+          ? (curRmType === "other" ? "other" : "raw_material")
+          : (curRmType === "other" ? "other" : (formValues.type || formType || "raw_material"));
+        let curItemName = formValues.material_name || formValues.item || "";
         let curRmId = formValues.raw_material_id ? Number(formValues.raw_material_id) : null;
         let curPrdId = formValues.product_id ? Number(formValues.product_id) : null;
 
-        if (curType === "raw_material" && curRmId) {
+        if (supplierType === "general") {
+          curItemName = String(formValues.material_name || formValues.item || "").trim();
+          curRmId = null;
+        } else if (curRmType === "other" || curType === "other") {
+          curItemName = String(formValues.material_name || formValues.item || "").trim();
+          curRmId = null;
+        } else if (curType === "raw_material" && curRmId) {
           const m = (lookupOptions.rawMaterials || []).find((rm) => Number(rm.id) === curRmId);
           if (m) curItemName = m.material_name;
         } else if ((curType === "product" || curType === "element") && curPrdId) {
@@ -3126,12 +3300,14 @@ async function submitForm(isAddMore = false) {
 
         itemsToSave.push({
           item: curItemName,
+          supplier_type: supplierType,
           type: curType,
+          raw_material_type: curRmType,
           raw_material_id: curRmId,
           product_id: curPrdId,
           element_id: curPrdId,
           quantity: curQty,
-          unit: formValues.unit || "",
+          unit: formValues.unit === "other" && formValues.unit_other ? formValues.unit_other : (formValues.unit || ""),
           rate: curRate,
           basic_value: curBasic,
           discount_percent: curDiscPct,
@@ -3146,12 +3322,41 @@ async function submitForm(isAddMore = false) {
           total_amount: curTotalAmt,
           hsn_code: formValues.hsn_code || "",
           remarks: formValues.remarks || "",
-          other_details: formValues.other_details || null,
+          supplier_company_name: formValues.supplier_company_name || "",
+          supplier_contact_person: formValues.supplier_contact_person || "",
+          supplier_phone: formValues.supplier_phone || "",
+          supplier_email: formValues.supplier_email || "",
+          supplier_address: formValues.supplier_address || "",
+          supplier_city: formValues.supplier_city || "",
+          supplier_state: formValues.supplier_state || "",
+          supplier_pincode: formValues.supplier_pincode || "",
+          supplier_gst_number: formValues.supplier_gst_number || "",
+          other_details: formValues.other_details || (supplierType === "general" ? {
+            material_name: curItemName,
+            supplier_type: "general",
+            raw_material_type: curRmType,
+            supplier_company_name: formValues.supplier_company_name || "",
+            supplier_contact_person: formValues.supplier_contact_person || "",
+            supplier_phone: formValues.supplier_phone || "",
+            supplier_email: formValues.supplier_email || "",
+            supplier_address: formValues.supplier_address || "",
+            supplier_city: formValues.supplier_city || "",
+            supplier_state: formValues.supplier_state || "",
+            supplier_pincode: formValues.supplier_pincode || "",
+            supplier_gst_number: formValues.supplier_gst_number || "",
+            cgst_percent: curCgstPct,
+            ut_sgst_percent: curSgstPct,
+            igst_percent: curIgstPct,
+          } : null),
         });
       }
 
       if (itemsToSave.length === 0) {
-        setPageError("Please add at least one raw material with a valid quantity before saving.");
+        setPageError(
+          supplierType === "general"
+            ? "Please enter or select a Raw Material and a valid Quantity before saving."
+            : "Please add at least one raw material with a valid quantity before saving."
+        );
         setIsSaving(false);
         return;
       }
@@ -3162,7 +3367,17 @@ async function submitForm(isAddMore = false) {
         dc_date: formValues.DC_date || formValues.dc_date || null,
         bill_no: formValues.bill_no || null,
         bill_date: formValues.bill_date || null,
-        supplier_id: isOther ? null : suppId,
+        supplier_id: supplierType === "general" ? null : (isOther ? null : suppId),
+        supplier_type: supplierType,
+        supplier_company_name: supplierType === "general" ? (formValues.supplier_company_name || null) : null,
+        supplier_contact_person: supplierType === "general" ? (formValues.supplier_contact_person || null) : null,
+        supplier_phone: supplierType === "general" ? (formValues.supplier_phone || null) : null,
+        supplier_email: supplierType === "general" ? (formValues.supplier_email || null) : null,
+        supplier_address: supplierType === "general" ? (formValues.supplier_address || null) : null,
+        supplier_city: supplierType === "general" ? (formValues.supplier_city || null) : null,
+        supplier_state: supplierType === "general" ? (formValues.supplier_state || null) : null,
+        supplier_pincode: supplierType === "general" ? (formValues.supplier_pincode || null) : null,
+        supplier_gst_number: supplierType === "general" ? (formValues.supplier_gst_number || null) : null,
         user_id: user?.id ? Number(user.id) : null,
         customer_id: null,
       };
@@ -3172,10 +3387,22 @@ async function submitForm(isAddMore = false) {
 
       for (let i = 0; i < itemsToSave.length; i++) {
         const item = itemsToSave[i];
+        const itemSupplierType = item.supplier_type || supplierType;
         const payload = {
           ...commonHeader,
+          supplier_type: itemSupplierType,
+          supplier_id: itemSupplierType === "general" ? null : commonHeader.supplier_id,
+          supplier_company_name: itemSupplierType === "general" ? (item.supplier_company_name || commonHeader.supplier_company_name || null) : null,
+          supplier_contact_person: itemSupplierType === "general" ? (item.supplier_contact_person || commonHeader.supplier_contact_person || null) : null,
+          supplier_phone: itemSupplierType === "general" ? (item.supplier_phone || commonHeader.supplier_phone || null) : null,
+          supplier_email: itemSupplierType === "general" ? (item.supplier_email || commonHeader.supplier_email || null) : null,
+          supplier_address: itemSupplierType === "general" ? (item.supplier_address || commonHeader.supplier_address || null) : null,
+          supplier_city: itemSupplierType === "general" ? (item.supplier_city || commonHeader.supplier_city || null) : null,
+          supplier_state: itemSupplierType === "general" ? (item.supplier_state || commonHeader.supplier_state || null) : null,
+          supplier_pincode: itemSupplierType === "general" ? (item.supplier_pincode || commonHeader.supplier_pincode || null) : null,
+          supplier_gst_number: itemSupplierType === "general" ? (item.supplier_gst_number || commonHeader.supplier_gst_number || null) : null,
           type: item.type || "raw_material",
-          raw_material_id: item.raw_material_id || null,
+          raw_material_id: itemSupplierType === "general" ? null : (item.raw_material_id || null),
           product_id: item.product_id || null,
           element_id: item.element_id || null,
           item: item.item,
@@ -3185,6 +3412,9 @@ async function submitForm(isAddMore = false) {
           basic_value: item.basic_value !== undefined && item.basic_value !== null ? Number(item.basic_value) : 0,
           discount_percent: item.discount_percent !== undefined && item.discount_percent !== null ? Number(item.discount_percent) : 0,
           discount_amount: item.discount_amount !== undefined && item.discount_amount !== null ? Number(item.discount_amount) : 0,
+          cgst_percent: item.cgst_percent !== undefined && item.cgst_percent !== null ? Number(item.cgst_percent) : 0,
+          ut_sgst_percent: item.ut_sgst_percent !== undefined && item.ut_sgst_percent !== null ? Number(item.ut_sgst_percent) : 0,
+          igst_percent: item.igst_percent !== undefined && item.igst_percent !== null ? Number(item.igst_percent) : 0,
           amount: item.amount !== undefined && item.amount !== null ? Number(item.amount) : 0,
           cgst_amount: item.cgst_amount !== undefined && item.cgst_amount !== null ? Number(item.cgst_amount) : 0,
           ut_sgst_amount: item.ut_sgst_amount !== undefined && item.ut_sgst_amount !== null ? Number(item.ut_sgst_amount) : 0,
@@ -3192,7 +3422,22 @@ async function submitForm(isAddMore = false) {
           total_amount: item.total_amount !== undefined && item.total_amount !== null ? Number(item.total_amount) : 0,
           hsn_code: item.hsn_code || null,
           remarks: item.remarks || null,
-          other_details: item.other_details || (isOther ? {
+          other_details: item.other_details || (itemSupplierType === "general" ? {
+            material_name: item.item,
+            supplier_type: "general",
+            supplier_company_name: item.supplier_company_name || commonHeader.supplier_company_name || null,
+            supplier_contact_person: item.supplier_contact_person || commonHeader.supplier_contact_person || null,
+            supplier_phone: item.supplier_phone || commonHeader.supplier_phone || null,
+            supplier_email: item.supplier_email || commonHeader.supplier_email || null,
+            supplier_address: item.supplier_address || commonHeader.supplier_address || null,
+            supplier_city: item.supplier_city || commonHeader.supplier_city || null,
+            supplier_state: item.supplier_state || commonHeader.supplier_state || null,
+            supplier_pincode: item.supplier_pincode || commonHeader.supplier_pincode || null,
+            supplier_gst_number: item.supplier_gst_number || commonHeader.supplier_gst_number || null,
+            cgst_percent: item.cgst_percent,
+            ut_sgst_percent: item.ut_sgst_percent,
+            igst_percent: item.igst_percent,
+          } : isOther ? {
             material_name: item.item,
             supplier_company_name: formValues.supplier_company_name,
             supplier_contact_person: formValues.supplier_contact_person,
@@ -3237,107 +3482,153 @@ async function submitForm(isAddMore = false) {
     }
 
     if (activeSection === "dailyInputs") {
-      const typeVal = formValues.type || (editingRecord ? editingRecord.type : null);
-      if (!typeVal) {
-        setPageError("Please select Item Type: Raw Material or Product first.");
-        setIsSaving(false);
-        return;
-      }
-      record.type = typeVal;
+      const supplierType = formValues.supplier_type || (editingRecord ? editingRecord.supplier_type : "supplier") || "supplier";
+      record.supplier_type = supplierType;
 
-      if (typeVal === "raw_material") {
-        let rmId =
-          formValues.raw_material_id !== undefined &&
-          formValues.raw_material_id !== "" &&
-          formValues.raw_material_id !== null
-            ? formValues.raw_material_id
-            : (editingRecord ? editingRecord.raw_material_id : null);
-        if (!rmId || Number(rmId) <= 0) {
-          const rawItemName = formValues.item || formValues.material_name || editingRecord?.item;
-          if (rawItemName) {
-            const matched = (lookupOptions.rawMaterials || []).find(
-              (m) => String(m.material_name || "").trim().toLowerCase() === String(rawItemName).trim().toLowerCase()
-            );
-            if (matched) {
-              rmId = matched.id;
-            }
-          }
-        }
-        if (!rmId || Number(rmId) <= 0) {
-          setPageError("Please click and select a specific raw material from the list below.");
-          setIsSaving(false);
-          return;
-        }
-        record.type = "raw_material";
-        record.raw_material_id = Number(rmId);
-        record.product_id = null;
-        record.element_id = null;
-        record.customer_id = null;
-      } else if (typeVal === "product" || typeVal === "element") {
-        let prdId =
-          formValues.product_id !== undefined &&
-          formValues.product_id !== "" &&
-          formValues.product_id !== null
-            ? formValues.product_id
-            : (formValues.element_id !== undefined &&
-               formValues.element_id !== "" &&
-               formValues.element_id !== null)
-              ? formValues.element_id
-              : (editingRecord ? (editingRecord.product_id || editingRecord.element_id) : null);
-        if (!prdId || Number(prdId) <= 0) {
-          const prdItemName = formValues.item || editingRecord?.item;
-          if (prdItemName) {
-            const matched = (lookupOptions.products || []).find(
-              (p) => String(p.name || "").trim().toLowerCase() === String(prdItemName).trim().toLowerCase()
-            );
-            if (matched) {
-              prdId = matched.id;
-            }
-          }
-        }
-        if (!prdId || Number(prdId) <= 0) {
-          setPageError("Please click and select a specific product from the list below.");
-          setIsSaving(false);
-          return;
-        }
-        record.type = "product";
-        record.product_id = Number(prdId);
-        record.element_id = Number(prdId);
+      if (supplierType === "general") {
+        record.supplier_id = null;
         record.raw_material_id = null;
-        record.customer_id = null;
-      } else if (typeVal === "other") {
         const itemName = formValues.material_name || formValues.item || (editingRecord ? editingRecord.item : "");
         if (!itemName || !String(itemName).trim()) {
-          setPageError("Material / item name is required.");
+          setPageError("Material name is required.");
           setIsSaving(false);
           return;
         }
-        const suppCompName = String(
-          formValues.supplier_company_name ||
-          editingRecord?.other_details?.supplier_company_name ||
-          editingRecord?.other_details?.company_name ||
-          ""
-        ).trim();
-        if (!suppCompName) {
-          setPageError("Supplier company name is compulsory.");
-          setIsSaving(false);
-          return;
+        record.item = String(itemName).trim();
+        record.type = "raw_material";
+        if (formValues.unit === "other" && formValues.unit_other) {
+          record.unit = formValues.unit_other;
         }
-      }
+        record.supplier_company_name = formValues.supplier_company_name !== undefined ? formValues.supplier_company_name : (editingRecord?.supplier_company_name || null);
+        record.supplier_contact_person = formValues.supplier_contact_person !== undefined ? formValues.supplier_contact_person : (editingRecord?.supplier_contact_person || null);
+        record.supplier_phone = formValues.supplier_phone !== undefined ? formValues.supplier_phone : (editingRecord?.supplier_phone || null);
+        record.supplier_email = formValues.supplier_email !== undefined ? formValues.supplier_email : (editingRecord?.supplier_email || null);
+        record.supplier_address = formValues.supplier_address !== undefined ? formValues.supplier_address : (editingRecord?.supplier_address || null);
+        record.supplier_city = formValues.supplier_city !== undefined ? formValues.supplier_city : (editingRecord?.supplier_city || null);
+        record.supplier_state = formValues.supplier_state !== undefined ? formValues.supplier_state : (editingRecord?.supplier_state || null);
+        record.supplier_pincode = formValues.supplier_pincode !== undefined ? formValues.supplier_pincode : (editingRecord?.supplier_pincode || null);
+        record.supplier_gst_number = formValues.supplier_gst_number !== undefined ? formValues.supplier_gst_number : (editingRecord?.supplier_gst_number || null);
 
-      if (typeVal === "raw_material" || typeVal === "product" || typeVal === "element") {
-        const suppId =
-          formValues.supplier_id !== undefined &&
-          formValues.supplier_id !== "" &&
-          formValues.supplier_id !== null
-            ? formValues.supplier_id
-            : (editingRecord ? editingRecord.supplier_id : null);
-        if (!suppId || Number(suppId) <= 0) {
-          setPageError("Supplier is compulsory. Please search and select a supplier from the list.");
+        record.other_details = {
+          ...(editingRecord?.other_details || {}),
+          material_name: record.item,
+          supplier_type: "general",
+          supplier_company_name: record.supplier_company_name,
+          supplier_contact_person: record.supplier_contact_person,
+          supplier_phone: record.supplier_phone,
+          supplier_email: record.supplier_email,
+          supplier_address: record.supplier_address,
+          supplier_city: record.supplier_city,
+          supplier_state: record.supplier_state,
+          supplier_pincode: record.supplier_pincode,
+          supplier_gst_number: record.supplier_gst_number,
+          cgst_percent: record.cgst_percent,
+          ut_sgst_percent: record.ut_sgst_percent,
+          igst_percent: record.igst_percent,
+        };
+      } else {
+        const typeVal = formValues.type || (editingRecord ? editingRecord.type : null);
+        if (!typeVal) {
+          setPageError("Please select Item Type: Raw Material or Product first.");
           setIsSaving(false);
           return;
         }
-        record.supplier_id = Number(suppId);
+        record.type = typeVal;
+
+        if (typeVal === "raw_material") {
+          let rmId =
+            formValues.raw_material_id !== undefined &&
+            formValues.raw_material_id !== "" &&
+            formValues.raw_material_id !== null
+              ? formValues.raw_material_id
+              : (editingRecord ? editingRecord.raw_material_id : null);
+          if (!rmId || Number(rmId) <= 0) {
+            const rawItemName = formValues.item || formValues.material_name || editingRecord?.item;
+            if (rawItemName) {
+              const matched = (lookupOptions.rawMaterials || []).find(
+                (m) => String(m.material_name || "").trim().toLowerCase() === String(rawItemName).trim().toLowerCase()
+              );
+              if (matched) {
+                rmId = matched.id;
+              }
+            }
+          }
+          if (!rmId || Number(rmId) <= 0) {
+            setPageError("Please click and select a specific raw material from the list below.");
+            setIsSaving(false);
+            return;
+          }
+          record.type = "raw_material";
+          record.raw_material_id = Number(rmId);
+          record.product_id = null;
+          record.element_id = null;
+          record.customer_id = null;
+        } else if (typeVal === "product" || typeVal === "element") {
+          let prdId =
+            formValues.product_id !== undefined &&
+            formValues.product_id !== "" &&
+            formValues.product_id !== null
+              ? formValues.product_id
+              : (formValues.element_id !== undefined &&
+                 formValues.element_id !== "" &&
+                 formValues.element_id !== null)
+                ? formValues.element_id
+                : (editingRecord ? (editingRecord.product_id || editingRecord.element_id) : null);
+          if (!prdId || Number(prdId) <= 0) {
+            const prdItemName = formValues.item || editingRecord?.item;
+            if (prdItemName) {
+              const matched = (lookupOptions.products || []).find(
+                (p) => String(p.name || "").trim().toLowerCase() === String(prdItemName).trim().toLowerCase()
+              );
+              if (matched) {
+                prdId = matched.id;
+              }
+            }
+          }
+          if (!prdId || Number(prdId) <= 0) {
+            setPageError("Please click and select a specific product from the list below.");
+            setIsSaving(false);
+            return;
+          }
+          record.type = "product";
+          record.product_id = Number(prdId);
+          record.element_id = Number(prdId);
+          record.raw_material_id = null;
+          record.customer_id = null;
+        } else if (typeVal === "other") {
+          const itemName = formValues.material_name || formValues.item || (editingRecord ? editingRecord.item : "");
+          if (!itemName || !String(itemName).trim()) {
+            setPageError("Material / item name is required.");
+            setIsSaving(false);
+            return;
+          }
+          const suppCompName = String(
+            formValues.supplier_company_name ||
+            editingRecord?.other_details?.supplier_company_name ||
+            editingRecord?.other_details?.company_name ||
+            ""
+          ).trim();
+          if (!suppCompName) {
+            setPageError("Supplier company name is compulsory.");
+            setIsSaving(false);
+            return;
+          }
+        }
+
+        if (typeVal === "raw_material" || typeVal === "product" || typeVal === "element") {
+          const suppId =
+            formValues.supplier_id !== undefined &&
+            formValues.supplier_id !== "" &&
+            formValues.supplier_id !== null
+              ? formValues.supplier_id
+              : (editingRecord ? editingRecord.supplier_id : null);
+          if (!suppId || Number(suppId) <= 0) {
+            setPageError("Supplier is compulsory. Please search and select a supplier from the list.");
+            setIsSaving(false);
+            return;
+          }
+          record.supplier_id = Number(suppId);
+        }
       }
 
       const qtyVal = formValues.quantity !== undefined && formValues.quantity !== ""
@@ -3429,6 +3720,20 @@ async function submitForm(isAddMore = false) {
         "discount_amount",
         "type",
         "supplier_id",
+        "supplier_type",
+        "supplier_company_name",
+        "supplier_contact_person",
+        "supplier_phone",
+        "supplier_email",
+        "supplier_address",
+        "supplier_city",
+        "supplier_state",
+        "supplier_pincode",
+        "supplier_gst_number",
+        "hsn_code",
+        "cgst_percent",
+        "ut_sgst_percent",
+        "igst_percent",
         "raw_material_id",
         "product_id",
         "element_id",
@@ -3469,7 +3774,7 @@ async function submitForm(isAddMore = false) {
       }
 
       // Resolve the selected raw material or product name.
-      if (record.type === "raw_material") {
+      if (record.type === "raw_material" && record.supplier_type !== "general") {
         record.customer_id = null;
         record.product_id = null;
         record.element_id = null;
@@ -3578,7 +3883,7 @@ async function submitForm(isAddMore = false) {
         if (valuesMatch) {
           if (
             activeSection === "dailyInputs" &&
-            (key === "type" || key === "raw_material_id" || key === "product_id" || key === "element_id" || (key === "rate" && formValues.rate !== "" && formValues.rate !== null && formValues.rate !== undefined))
+            (key === "type" || key === "supplier_type" || key === "raw_material_id" || key === "product_id" || key === "element_id" || (key === "rate" && formValues.rate !== "" && formValues.rate !== null && formValues.rate !== undefined))
           ) {
             // Keep critical dailyInputs identifiers so backend PUT/PATCH always receives them
           } else {
@@ -4642,12 +4947,26 @@ async function handleDeleteSelected() {
     if (key === "welded_element_id") {
       return record?.welded_element_name || lookupOptions.products?.find((p) => String(p.id) === String(value))?.name || (value ? `Welded Element #${value}` : "—");
     }
+    if (key === "supplier_type") {
+      const sType = record?.supplier_type || (record?.supplier_id ? "supplier" : "general");
+      return sType === "general" ? "General" : "Supplier";
+    }
     if (key === "supplier_id") {
+      if (record?.supplier_type === "general" || (!record?.supplier_id && record?.supplier_type === "general")) {
+        const comp = record.supplier_company_name || record.other_details?.supplier_company_name || record.other_details?.company_name;
+        return comp ? `${comp} (General)` : "General";
+      }
       if (record?.type === "other") {
         return record.other_details?.supplier_company_name || record.other_details?.company_name || "—";
       }
       if (value) {
         return lookupOptions.suppliers?.find((supplier) => supplier.id === value)?.company_name;
+      }
+      if (record?.supplier_company_name) {
+        return `${record.supplier_company_name} (General)`;
+      }
+      if (record?.supplier_type === "general") {
+        return "General";
       }
     }
     if (key === "customer_id") {
@@ -4688,6 +5007,12 @@ async function handleDeleteSelected() {
         { value: "raw_material", label: "Raw material" },
         { value: "product", label: "Product" },
         { value: "other", label: "Other" },
+      ];
+    }
+    if (field === "supplier_type") {
+      return [
+        { value: "supplier", label: "Supplier" },
+        { value: "general", label: "General" },
       ];
     }
 
@@ -4989,6 +5314,10 @@ async function handleDeleteSelected() {
                             initialValues.zach_code = "";
                             initialValues.raw_materials = [];
                             initialValues.raw_material_ids = [];
+                          }
+                          if (activeSection === "dailyInputs") {
+                            initialValues.supplier_type = "supplier";
+                            setStagedDailyInputs([]);
                           }
                           setFormValues(initialValues);
                           setIsFormOpen(true);
@@ -5738,6 +6067,10 @@ async function handleDeleteSelected() {
                       );
 
                       if (isDailyInput) {
+                        const currentSupplierType = formValues.supplier_type || "supplier";
+                        const isSupplierMode = currentSupplierType === "supplier";
+                        const isGeneralMode = currentSupplierType === "general";
+
                         return (
                           <>
                             {documentFields.length > 0 && (
@@ -5746,149 +6079,159 @@ async function handleDeleteSelected() {
                               </div>
                             )}
 
-                            {supplierPickerFields.length > 0 && (
-                              <div className="daily-supplier-picker-wrap">
-                                {supplierPickerFields.map(renderField)}
-                              </div>
-                            )}
-
-                            <div className="daily-rm-picker-wrap">
-                              <DailyInputRawMaterialPicker
-                                rawMaterials={lookupOptions.rawMaterials || []}
-                                products={lookupOptions.products || []}
-                                selectedRawMaterialId={formValues.raw_material_id}
-                                selectedProductId={formValues.product_id}
-                                selectedItemName={formValues.item}
-                                onSelect={(selected) => {
-                                  if (selected._itemType === "product") {
-                                    handleDailyInputItemSelect({ type: "product", id: selected.id, item: selected });
-                                  } else {
-                                    handleDailyInputItemSelect({ type: "raw_material", id: selected.id, item: selected });
-                                  }
-                                }}
-                                onDeselect={handleDailyInputItemDeselect}
-                                onAddNewRawMaterial={(searched) => handleOpenQuickAddRawMaterial(searched)}
-                                disabled={isSaving}
-                                isLoading={lookupLoading.rawMaterials}
-                                error={lookupErrors.rawMaterials}
-                                onRetry={() => setLookupRequestVersion((v) => v + 1)}
-                                hasError={Boolean(pageError && !formValues.item && !formValues.raw_material_id)}
-                                required={true}
-                              />
-                            </div>
-
-                            {taxPercentFields.length > 0 && (
-                              <div className="daily-input-tax-row">
-                                {taxPercentFields.map(renderField)}
-                              </div>
-                            )}
-
-                            <div className="staged-raw-materials-section">
-                              <div className="staged-raw-materials-header">
-                                <h3>Raw Materials Table ({stagedDailyInputs.length})</h3>
-                                <span className="staged-hint">
-                                  Select raw material above, enter quantity & rate below, then click "+ Add" to save into table.
+                            {/* SELECT SUPPLIER TYPE: SUPPLIER OR GENERAL */}
+                            <div className="supplier-type-selector-card">
+                              <div className="supplier-type-header">
+                                <div className="supplier-type-label-wrap">
+                                  <span className="supplier-type-title">Select Supplier Type:</span>
+                                  <span className="supplier-type-required">*</span>
+                                </div>
+                                <div className="supplier-type-pill-toggle" role="radiogroup" aria-label="Select Supplier Type">
+                                  <button
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={isSupplierMode}
+                                    className={`supplier-type-pill-btn supplier-mode ${isSupplierMode ? "active" : ""}`}
+                                    onClick={() => handleFormFieldChange("supplier_type", "supplier")}
+                                  >
+                                    <span className="supplier-type-pill-icon">🏢</span>
+                                    <span>Supplier</span>
+                                    {isSupplierMode && <span className="supplier-type-check">✓</span>}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={isGeneralMode}
+                                    className={`supplier-type-pill-btn general-mode ${isGeneralMode ? "active" : ""}`}
+                                    onClick={() => handleFormFieldChange("supplier_type", "general")}
+                                  >
+                                    <span className="supplier-type-pill-icon">📦</span>
+                                    <span>General</span>
+                                    {isGeneralMode && <span className="supplier-type-check">✓</span>}
+                                  </button>
+                                </div>
+                                <span className="supplier-type-badge-hint">
+                                  {isSupplierMode
+                                    ? "Supplier flow: Select supplier from list, pick raw materials & stage to table"
+                                    : "General flow: Direct raw material master & daily input values"}
                                 </span>
                               </div>
-                              <div className="staged-table-wrapper">
-                                <table className="staged-table">
-                                  <colgroup>
-                                    <col style={{ width: "3.5%" }} />
-                                    <col style={{ width: "16%" }} />
-                                    <col style={{ width: "6.5%" }} />
-                                    <col style={{ width: "5%" }} />
-                                    <col style={{ width: "7.5%" }} />
-                                    <col style={{ width: "8%" }} />
-                                    <col style={{ width: "8%" }} />
-                                    <col style={{ width: "8%" }} />
-                                    <col style={{ width: "7.5%" }} />
-                                    <col style={{ width: "7.5%" }} />
-                                    <col style={{ width: "7.5%" }} />
-                                    <col style={{ width: "9.5%" }} />
-                                    <col style={{ width: "5.5%" }} />
-                                  </colgroup>
-                                  <thead>
-                                    <tr>
-                                      <th style={{ textAlign: "center" }} title="Row Number">#</th>
-                                      <th title="Name of Raw Material">Raw Material</th>
-                                      <th className="numeric-cell" title="Quantity">Qty</th>
-                                      <th title="Unit">Unit</th>
-                                      <th className="numeric-cell" title="Rate">Rate</th>
-                                      <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
-                                      <th className="numeric-cell" title="Discount Value">Disc Val</th>
-                                      <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
-                                      <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
-                                      <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
-                                      <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
-                                      <th className="numeric-cell" title="Invoice Value">Invoice Val</th>
-                                      <th style={{ textAlign: "center" }} title="Action">Action</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {stagedDailyInputs.map((row, idx) => (
-                                      <tr key={row._tempId} className="staged-saved-row">
-                                        <td style={{ textAlign: "center" }}>{idx + 1}</td>
-                                        <td className="staged-item-name" title={row.item || "—"}>{row.item || "—"}</td>
-                                        <td className="numeric-cell">{row.quantity}</td>
-                                        <td>{row.unit || "—"}</td>
-                                        <td className="numeric-cell">₹{Number(row.rate || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell">₹{Number(row.basic_value || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell">₹{Number(row.discount_amount || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell">₹{Number(row.amount || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell">₹{Number(row.cgst_amount || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell">₹{Number(row.ut_sgst_amount || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell">₹{Number(row.igst_amount || 0).toFixed(2)}</td>
-                                        <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
-                                        <td className="staged-actions-cell" style={{ textAlign: "center" }}>
-                                          <button
-                                            type="button"
-                                            className="staged-action-btn edit-staged-btn"
-                                            onClick={() => handleEditStagedItem(idx)}
-                                            title="Edit this item"
-                                          >
-                                            ✎
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="staged-action-btn delete-staged-btn"
-                                            onClick={() => handleDeleteStagedItem(idx)}
-                                            title="Remove this item"
-                                          >
-                                            ✕
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
+                            </div>
 
-                                    <tr className="table-active-input-row">
-                                      <td style={{ textAlign: "center", fontWeight: "700", color: "#64748b" }}>
-                                        {stagedDailyInputs.length + 1}
-                                      </td>
-                                      <td className="table-item-name-cell" title={formValues.item || "Select raw material from above"}>
-                                        {formValues.item ? (
-                                          <div className="table-active-item-badge">
-                                            <span className="table-active-item-text">{formValues.item}</span>
-                                          </div>
-                                        ) : (
-                                          <div className="table-active-item-placeholder">
-                                            (Select above)
-                                          </div>
-                                        )}
-                                      </td>
-                                      <td className="numeric-cell">
+                            {/* IF SUPPLIER IS SELECTED: SHOW SUPPLIER LIST AND REST OF FLOW IS SAME */}
+                            {isSupplierMode && (
+                              <>
+                                {supplierPickerFields.length > 0 && (
+                                  <div className="daily-supplier-picker-wrap">
+                                    {supplierPickerFields.map(renderField)}
+                                  </div>
+                                )}
+
+                                {/* SELECT RAW MATERIAL TYPE: RAW MATERIAL OR OTHER */}
+                                <div className="rm-type-selector-card">
+                                  <div className="rm-type-header">
+                                    <div className="rm-type-label-wrap">
+                                      <span className="rm-type-title">Select Raw Material Type:</span>
+                                      <span className="rm-type-required">*</span>
+                                    </div>
+                                    <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Raw Material Type">
+                                      <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={formValues.raw_material_type !== "other"}
+                                        className={`rm-type-pill-btn ${formValues.raw_material_type !== "other" ? "active" : ""}`}
+                                        onClick={() => handleRawMaterialTypeSelect("raw_material")}
+                                      >
+                                        <span className="rm-type-pill-icon">📦</span>
+                                        <span>Raw Material</span>
+                                        {formValues.raw_material_type !== "other" && <span className="rm-type-check">✓</span>}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={formValues.raw_material_type === "other"}
+                                        className={`rm-type-pill-btn other-mode ${formValues.raw_material_type === "other" ? "active" : ""}`}
+                                        onClick={() => handleRawMaterialTypeSelect("other")}
+                                      >
+                                        <span className="rm-type-pill-icon">📝</span>
+                                        <span>Other</span>
+                                        {formValues.raw_material_type === "other" && <span className="rm-type-check">✓</span>}
+                                      </button>
+                                    </div>
+                                    <span className="rm-type-badge-hint">
+                                      {formValues.raw_material_type !== "other"
+                                        ? "List of raw materials is displayed below and can be searched"
+                                        : "Enter raw material name and all details directly as inputs"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {formValues.raw_material_type !== "other" ? (
+                                  <>
+                                    <div className="daily-rm-picker-wrap">
+                                      <DailyInputRawMaterialPicker
+                                        rawMaterials={lookupOptions.rawMaterials || []}
+                                        products={lookupOptions.products || []}
+                                        selectedRawMaterialId={formValues.raw_material_id}
+                                        selectedProductId={formValues.product_id}
+                                        selectedItemName={formValues.item}
+                                        onSelect={(selected) => {
+                                          if (selected._itemType === "product") {
+                                            handleDailyInputItemSelect({ type: "product", id: selected.id, item: selected });
+                                          } else {
+                                            handleDailyInputItemSelect({ type: "raw_material", id: selected.id, item: selected });
+                                          }
+                                        }}
+                                        onDeselect={handleDailyInputItemDeselect}
+                                        onAddNewRawMaterial={(searched) => handleOpenQuickAddRawMaterial(searched)}
+                                        disabled={isSaving}
+                                        isLoading={lookupLoading.rawMaterials}
+                                        error={lookupErrors.rawMaterials}
+                                        onRetry={() => setLookupRequestVersion((v) => v + 1)}
+                                        hasError={Boolean(pageError && !formValues.item && !formValues.raw_material_id)}
+                                        required={true}
+                                      />
+                                    </div>
+
+                                    {taxPercentFields.length > 0 && (
+                                      <div className="daily-input-tax-row">
+                                        {taxPercentFields.map(renderField)}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="general-section-card" style={{ marginBottom: "12px" }}>
+                                    <div className="general-fields-grid-4">
+                                      <label className="field-span-2">
+                                        <span>Raw Material Name <span style={{ color: "#ef4444" }}>*</span></span>
                                         <input
-                                          type="number"
-                                          step="any"
-                                          min="0.0001"
-                                          placeholder="0.00"
-                                          className="table-input table-qty-input numeric-input"
-                                          value={formValues.quantity ?? ""}
-                                          onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                          id="record-supplier-other-material_name"
+                                          type="text"
+                                          placeholder="Enter raw material name"
+                                          value={formValues.material_name || formValues.item || ""}
+                                          onChange={(e) => {
+                                            handleFormFieldChange("material_name", e.target.value);
+                                            handleFormFieldChange("item", e.target.value);
+                                          }}
+                                          required
                                         />
-                                      </td>
-                                      <td>
+                                      </label>
+
+                                      <label>
+                                        <span>HSN Code</span>
+                                        <input
+                                          id="record-supplier-other-hsn_code"
+                                          type="text"
+                                          placeholder="e.g. 8481"
+                                          value={formValues.hsn_code ?? ""}
+                                          onChange={(e) => handleFormFieldChange("hsn_code", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>Unit</span>
                                         <select
-                                          className="table-input table-unit-select"
+                                          id="record-supplier-other-unit"
                                           value={formValues.unit || "num"}
                                           onChange={(e) => handleFormFieldChange("unit", e.target.value)}
                                         >
@@ -5898,86 +6241,870 @@ async function handleDeleteSelected() {
                                           <option value="mtrs">mtrs</option>
                                           <option value="other">other</option>
                                         </select>
-                                      </td>
-                                      <td className="numeric-cell">
+                                      </label>
+
+                                      <label>
+                                        <span>Standard Rate (₹)</span>
                                         <input
+                                          id="record-supplier-other-rate"
                                           type="number"
                                           step="0.01"
                                           min="0"
                                           placeholder="0.00"
-                                          className="table-input table-rate-input numeric-input"
                                           value={formValues.rate ?? ""}
                                           onChange={(e) => handleFormFieldChange("rate", e.target.value)}
                                         />
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell">
-                                        ₹{Number(formValues.basic_value || 0).toFixed(2)}
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell">
-                                        ₹{Number(formValues.discount_amount || 0).toFixed(2)}
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell">
-                                        ₹{Number(formValues.amount || 0).toFixed(2)}
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell">
-                                        ₹{Number(formValues.cgst_amount || 0).toFixed(2)}
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell">
-                                        ₹{Number(formValues.ut_sgst_amount || 0).toFixed(2)}
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell">
-                                        ₹{Number(formValues.igst_amount || 0).toFixed(2)}
-                                      </td>
-                                      <td className="numeric-cell table-calculated-cell staged-total-cell">
-                                        ₹{Number(formValues.total_amount || 0).toFixed(2)}
-                                      </td>
-                                      <td style={{ textAlign: "center" }}>
-                                        {editingRecord ? (
-                                          <span style={{ fontSize: "11px", color: "#64748b" }}>Editing</span>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            className="table-btn-add-more"
-                                            onClick={handleAddMoreDailyInput}
-                                            title="Add this raw material row to the table"
-                                          >
-                                            + Add
-                                          </button>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="staged-table-footer">
-                                      <td colSpan={2}>
-                                        <strong>Total ({stagedDailyInputs.length})</strong>
-                                      </td>
-                                      <td className="numeric-cell">
-                                        <strong>
-                                          {Number.isInteger(stagedTotals.quantity)
-                                            ? String(stagedTotals.quantity)
-                                            : String(Number(stagedTotals.quantity.toFixed(4)))}
-                                        </strong>
-                                      </td>
-                                      <td>—</td>
-                                      <td>—</td>
-                                      <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
-                                      <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
-                                      <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
-                                      <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
-                                      <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
-                                      <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
-                                      <td className="numeric-cell staged-total-cell"><strong>₹{stagedTotals.total_amount.toFixed(2)}</strong></td>
-                                      <td>—</td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </div>
-                            </div>
+                                      </label>
 
-                            {remarksFields.length > 0 && (
-                              <div className="remarks-fields-row">
-                                {remarksFields.map(renderField)}
+                                      <label>
+                                        <span>Discount (%)</span>
+                                        <input
+                                          id="record-supplier-other-discount_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.discount_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("discount_percent", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>CGST (%)</span>
+                                        <input
+                                          id="record-supplier-other-cgst_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.cgst_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("cgst_percent", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>UTGST/SGST (%)</span>
+                                        <input
+                                          id="record-supplier-other-ut_sgst_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.ut_sgst_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("ut_sgst_percent", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>IGST (%)</span>
+                                        <input
+                                          id="record-supplier-other-igst_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.igst_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("igst_percent", e.target.value)}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="staged-raw-materials-section">
+                                  <div className="staged-raw-materials-header">
+                                    <h3>Raw Materials Table ({stagedDailyInputs.length})</h3>
+                                    <span className="staged-hint">
+                                      Select raw material above, enter quantity & rate below, then click "+ Add" to save into table.
+                                    </span>
+                                  </div>
+                                  <div className="staged-table-wrapper">
+                                    <table className="staged-table">
+                                      <colgroup>
+                                        <col style={{ width: "3.5%" }} />
+                                        <col style={{ width: "16%" }} />
+                                        <col style={{ width: "6.5%" }} />
+                                        <col style={{ width: "5%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "9.5%" }} />
+                                        <col style={{ width: "5.5%" }} />
+                                      </colgroup>
+                                      <thead>
+                                        <tr>
+                                          <th style={{ textAlign: "center" }} title="Row Number">#</th>
+                                          <th title="Name of Raw Material">Raw Material</th>
+                                          <th className="numeric-cell" title="Quantity">Qty</th>
+                                          <th title="Unit">Unit</th>
+                                          <th className="numeric-cell" title="Rate">Rate</th>
+                                          <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
+                                          <th className="numeric-cell" title="Discount Value">Disc Val</th>
+                                          <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
+                                          <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
+                                          <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
+                                          <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                          <th className="numeric-cell" title="Invoice Value">Invoice Val</th>
+                                          <th style={{ textAlign: "center" }} title="Action">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {stagedDailyInputs.map((row, idx) => (
+                                          <tr key={row._tempId} className="staged-saved-row">
+                                            <td style={{ textAlign: "center" }}>{idx + 1}</td>
+                                            <td className="staged-item-name" title={row.item || "—"}>{row.item || "—"}</td>
+                                            <td className="numeric-cell">{row.quantity}</td>
+                                            <td>{row.unit || "—"}</td>
+                                            <td className="numeric-cell">₹{Number(row.rate || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.basic_value || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.discount_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.cgst_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.ut_sgst_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.igst_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
+                                            <td className="staged-actions-cell" style={{ textAlign: "center" }}>
+                                              <button
+                                                type="button"
+                                                className="staged-action-btn edit-staged-btn"
+                                                onClick={() => handleEditStagedItem(idx)}
+                                                title="Edit this item"
+                                              >
+                                                ✎
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="staged-action-btn delete-staged-btn"
+                                                onClick={() => handleDeleteStagedItem(idx)}
+                                                title="Remove this item"
+                                              >
+                                                ✕
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+
+                                        <tr className="table-active-input-row">
+                                          <td style={{ textAlign: "center", fontWeight: "700", color: "#64748b" }}>
+                                            {stagedDailyInputs.length + 1}
+                                          </td>
+                                          <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter raw material name above" : "Select raw material from above")}>
+                                            {(formValues.material_name || formValues.item) ? (
+                                              <div className="table-active-item-badge">
+                                                <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
+                                              </div>
+                                            ) : (
+                                              <div className="table-active-item-placeholder">
+                                                {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td className="numeric-cell">
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              min="0.0001"
+                                              placeholder="0.00"
+                                              className="table-input table-qty-input numeric-input"
+                                              value={formValues.quantity ?? ""}
+                                              onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                            />
+                                          </td>
+                                          <td>
+                                            <select
+                                              className="table-input table-unit-select"
+                                              value={formValues.unit || "num"}
+                                              onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                            >
+                                              <option value="num">num</option>
+                                              <option value="kg">kg</option>
+                                              <option value="litre">litre</option>
+                                              <option value="mtrs">mtrs</option>
+                                              <option value="other">other</option>
+                                            </select>
+                                          </td>
+                                          <td className="numeric-cell">
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0"
+                                              placeholder="0.00"
+                                              className="table-input table-rate-input numeric-input"
+                                              value={formValues.rate ?? ""}
+                                              onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                            />
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.basic_value || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.discount_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.cgst_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.ut_sgst_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.igst_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell staged-total-cell">
+                                            ₹{Number(formValues.total_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td style={{ textAlign: "center" }}>
+                                            {editingRecord ? (
+                                              <span style={{ fontSize: "11px", color: "#64748b" }}>Editing</span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                className="table-btn-add-more"
+                                                onClick={handleAddMoreDailyInput}
+                                                title="Add this raw material row to the table"
+                                              >
+                                                + Add
+                                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                      <tfoot>
+                                        <tr className="staged-table-footer">
+                                          <td colSpan={2}>
+                                            <strong>Total ({stagedDailyInputs.length})</strong>
+                                          </td>
+                                          <td className="numeric-cell">
+                                            <strong>
+                                              {Number.isInteger(stagedTotals.quantity)
+                                                ? String(stagedTotals.quantity)
+                                                : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                            </strong>
+                                          </td>
+                                          <td>—</td>
+                                          <td>—</td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell staged-total-cell"><strong>₹{stagedTotals.total_amount.toFixed(2)}</strong></td>
+                                          <td>—</td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                {remarksFields.length > 0 && (
+                                  <div className="remarks-fields-row">
+                                    {remarksFields.map(renderField)}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {/* IF GENERAL IS SELECTED: SHOW SUPPLIER DETAILS, RAW MATERIAL DETAILS AND DAILY INPUTS TABLE */}
+                            {isGeneralMode && (
+                              <div className="general-mode-container">
+                                {/* SECTION 0: SUPPLIER DETAILS */}
+                                <div className="general-section-card">
+                                  <div className="general-card-header">
+                                    <div className="general-card-title">
+                                      <span>🏢</span>
+                                      <span>Supplier Details</span>
+                                    </div>
+                                    <span className="general-card-subtext">
+                                      Enter supplier details (saved in daily input only)
+                                    </span>
+                                  </div>
+
+                                  <div className="general-fields-grid-4">
+                                    <label>
+                                      <span>Supplier Name</span>
+                                      <input
+                                        id="record-general-supplier_company_name"
+                                        type="text"
+                                        placeholder="Enter supplier name"
+                                        value={formValues.supplier_company_name ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_company_name", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label>
+                                      <span>Contact Person</span>
+                                      <input
+                                        id="record-general-supplier_contact_person"
+                                        type="text"
+                                        placeholder="Contact person"
+                                        value={formValues.supplier_contact_person ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_contact_person", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label>
+                                      <span>Phone</span>
+                                      <input
+                                        id="record-general-supplier_phone"
+                                        type="text"
+                                        placeholder="Phone number"
+                                        value={formValues.supplier_phone ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_phone", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label>
+                                      <span>Email</span>
+                                      <input
+                                        id="record-general-supplier_email"
+                                        type="email"
+                                        placeholder="supplier@example.com"
+                                        value={formValues.supplier_email ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_email", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label className="field-span-2">
+                                      <span>Address</span>
+                                      <input
+                                        id="record-general-supplier_address"
+                                        type="text"
+                                        placeholder="Office / factory address"
+                                        value={formValues.supplier_address ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_address", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label>
+                                      <span>City</span>
+                                      <input
+                                        id="record-general-supplier_city"
+                                        type="text"
+                                        placeholder="City"
+                                        value={formValues.supplier_city ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_city", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label>
+                                      <span>State</span>
+                                      <select
+                                        id="record-general-supplier_state"
+                                        value={formValues.supplier_state ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_state", e.target.value)}
+                                      >
+                                        <option value="">Select State</option>
+                                        {INDIAN_STATES.map((st) => (
+                                          <option key={st} value={st}>
+                                            {st}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+
+                                    <label>
+                                      <span>Pincode</span>
+                                      <input
+                                        id="record-general-supplier_pincode"
+                                        type="text"
+                                        placeholder="Pincode"
+                                        value={formValues.supplier_pincode ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_pincode", e.target.value)}
+                                      />
+                                    </label>
+
+                                    <label>
+                                      <span>GST Number</span>
+                                      <input
+                                        id="record-general-supplier_gst_number"
+                                        type="text"
+                                        placeholder="GSTIN"
+                                        value={formValues.supplier_gst_number ?? ""}
+                                        onChange={(e) => handleFormFieldChange("supplier_gst_number", e.target.value)}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+
+                                {/* SECTION 1: RAW MATERIAL DETAILS */}
+                                <div className="general-section-card">
+                                  <div className="general-card-header">
+                                    <div className="general-card-title">
+                                      <span>📦</span>
+                                      <span>Raw Material Details</span>
+                                    </div>
+                                    <span className="general-card-subtext">
+                                      {formValues.raw_material_type === "other"
+                                        ? "Enter raw material name & all details manually"
+                                        : "Search and select raw material from list"}
+                                    </span>
+                                  </div>
+
+                                  {/* SELECT RAW MATERIAL TYPE: RAW MATERIAL OR OTHER */}
+                                  <div className="rm-type-selector-card">
+                                    <div className="rm-type-header">
+                                      <div className="rm-type-label-wrap">
+                                        <span className="rm-type-title">Select Raw Material Type:</span>
+                                        <span className="rm-type-required">*</span>
+                                      </div>
+                                      <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Raw Material Type">
+                                        <button
+                                          type="button"
+                                          role="radio"
+                                          aria-checked={formValues.raw_material_type !== "other"}
+                                          className={`rm-type-pill-btn ${formValues.raw_material_type !== "other" ? "active" : ""}`}
+                                          onClick={() => handleRawMaterialTypeSelect("raw_material")}
+                                        >
+                                          <span className="rm-type-pill-icon">📦</span>
+                                          <span>Raw Material</span>
+                                          {formValues.raw_material_type !== "other" && <span className="rm-type-check">✓</span>}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          role="radio"
+                                          aria-checked={formValues.raw_material_type === "other"}
+                                          className={`rm-type-pill-btn other-mode ${formValues.raw_material_type === "other" ? "active" : ""}`}
+                                          onClick={() => handleRawMaterialTypeSelect("other")}
+                                        >
+                                          <span className="rm-type-pill-icon">📝</span>
+                                          <span>Other</span>
+                                          {formValues.raw_material_type === "other" && <span className="rm-type-check">✓</span>}
+                                        </button>
+                                      </div>
+                                      <span className="rm-type-badge-hint">
+                                        {formValues.raw_material_type !== "other"
+                                          ? "List of raw materials is displayed below and can be searched"
+                                          : "Enter raw material name and all details directly as inputs"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* IF RAW MATERIAL: SEARCHABLE LIST OF RAW MATERIALS */}
+                                  {formValues.raw_material_type !== "other" ? (
+                                    <div className="general-rm-picker-wrap">
+                                      <DailyInputRawMaterialPicker
+                                        rawMaterials={lookupOptions.rawMaterials || []}
+                                        products={[]}
+                                        selectedRawMaterialId={formValues.raw_material_id}
+                                        selectedProductId={null}
+                                        selectedItemName={formValues.item || formValues.material_name}
+                                        onSelect={(selected) => {
+                                          handleDailyInputItemSelect({ type: "raw_material", id: selected.id, item: selected });
+                                        }}
+                                        onDeselect={handleDailyInputItemDeselect}
+                                        disabled={isSaving}
+                                        isLoading={lookupLoading.rawMaterials}
+                                        error={lookupErrors.rawMaterials}
+                                        onRetry={() => setLookupRequestVersion((v) => v + 1)}
+                                        hasError={Boolean(pageError && !formValues.item && !formValues.material_name)}
+                                        required={true}
+                                      />
+
+                                      <div className="general-fields-grid-4" style={{ marginTop: "10px" }}>
+                                        <label>
+                                          <span>HSN Code</span>
+                                          <input
+                                            id="record-general-hsn_code"
+                                            type="text"
+                                            placeholder="e.g. 8481"
+                                            value={formValues.hsn_code ?? ""}
+                                            onChange={(e) => handleFormFieldChange("hsn_code", e.target.value)}
+                                          />
+                                        </label>
+
+                                        <label>
+                                          <span>Discount (%)</span>
+                                          <input
+                                            id="record-general-discount_percent"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max="100"
+                                            placeholder="0.00"
+                                            value={formValues.discount_percent ?? ""}
+                                            onChange={(e) => handleFormFieldChange("discount_percent", e.target.value)}
+                                          />
+                                        </label>
+
+                                        <label>
+                                          <span>CGST (%)</span>
+                                          <input
+                                            id="record-general-cgst_percent"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max="100"
+                                            placeholder="0.00"
+                                            value={formValues.cgst_percent ?? ""}
+                                            onChange={(e) => handleFormFieldChange("cgst_percent", e.target.value)}
+                                          />
+                                        </label>
+
+                                        <label>
+                                          <span>UTGST/SGST (%)</span>
+                                          <input
+                                            id="record-general-ut_sgst_percent"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max="100"
+                                            placeholder="0.00"
+                                            value={formValues.ut_sgst_percent ?? ""}
+                                            onChange={(e) => handleFormFieldChange("ut_sgst_percent", e.target.value)}
+                                          />
+                                        </label>
+
+                                        <label>
+                                          <span>IGST (%)</span>
+                                          <input
+                                            id="record-general-igst_percent"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max="100"
+                                            placeholder="0.00"
+                                            value={formValues.igst_percent ?? ""}
+                                            onChange={(e) => handleFormFieldChange("igst_percent", e.target.value)}
+                                          />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    /* IF OTHER IS SELECTED: RAW MATERIAL NAME AND ALL OTHER DETAILS AS INPUT */
+                                    <div className="general-fields-grid-4">
+                                      <label className="field-span-2">
+                                        <span>Raw Material Name <span style={{ color: "#ef4444" }}>*</span></span>
+                                        <input
+                                          id="record-general-material_name"
+                                          type="text"
+                                          placeholder="Enter raw material name"
+                                          value={formValues.material_name || formValues.item || ""}
+                                          onChange={(e) => {
+                                            handleFormFieldChange("material_name", e.target.value);
+                                            handleFormFieldChange("item", e.target.value);
+                                          }}
+                                          required
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>HSN Code</span>
+                                        <input
+                                          id="record-general-hsn_code"
+                                          type="text"
+                                          placeholder="e.g. 8481"
+                                          value={formValues.hsn_code ?? ""}
+                                          onChange={(e) => handleFormFieldChange("hsn_code", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>Unit</span>
+                                        <select
+                                          id="record-general-unit"
+                                          value={formValues.unit || "num"}
+                                          onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                        >
+                                          <option value="num">num</option>
+                                          <option value="kg">kg</option>
+                                          <option value="litre">litre</option>
+                                          <option value="mtrs">mtrs</option>
+                                          <option value="other">other</option>
+                                        </select>
+                                      </label>
+
+                                      <label>
+                                        <span>Standard Rate (₹)</span>
+                                        <input
+                                          id="record-general-rate"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          placeholder="0.00"
+                                          value={formValues.rate ?? ""}
+                                          onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>Discount (%)</span>
+                                        <input
+                                          id="record-general-discount_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.discount_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("discount_percent", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>CGST (%)</span>
+                                        <input
+                                          id="record-general-cgst_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.cgst_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("cgst_percent", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>UTGST/SGST (%)</span>
+                                        <input
+                                          id="record-general-ut_sgst_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.ut_sgst_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("ut_sgst_percent", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>IGST (%)</span>
+                                        <input
+                                          id="record-general-igst_percent"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          placeholder="0.00"
+                                          value={formValues.igst_percent ?? ""}
+                                          onChange={(e) => handleFormFieldChange("igst_percent", e.target.value)}
+                                        />
+                                      </label>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* SECTION 2: RAW MATERIALS TABLE (JUST LIKE IN SUPPLIER TYPE) */}
+                                <div className="staged-raw-materials-section">
+                                  <div className="staged-raw-materials-header">
+                                    <h3>Raw Materials Table ({stagedDailyInputs.length})</h3>
+                                    <span className="staged-hint">
+                                      Enter raw material name above, enter quantity, unit & rate below, then click "+ Add" to save into table.
+                                    </span>
+                                  </div>
+                                  <div className="staged-table-wrapper">
+                                    <table className="staged-table">
+                                      <colgroup>
+                                        <col style={{ width: "3.5%" }} />
+                                        <col style={{ width: "16%" }} />
+                                        <col style={{ width: "6.5%" }} />
+                                        <col style={{ width: "5%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "7.5%" }} />
+                                        <col style={{ width: "9.5%" }} />
+                                        <col style={{ width: "5.5%" }} />
+                                      </colgroup>
+                                      <thead>
+                                        <tr>
+                                          <th style={{ textAlign: "center" }} title="Row Number">#</th>
+                                          <th title="Name of Raw Material">Raw Material</th>
+                                          <th className="numeric-cell" title="Quantity">Qty</th>
+                                          <th title="Unit">Unit</th>
+                                          <th className="numeric-cell" title="Rate">Rate</th>
+                                          <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
+                                          <th className="numeric-cell" title="Discount Value">Disc Val</th>
+                                          <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
+                                          <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
+                                          <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
+                                          <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                          <th className="numeric-cell" title="Invoice Value">Invoice Val</th>
+                                          <th style={{ textAlign: "center" }} title="Action">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {stagedDailyInputs.map((row, idx) => (
+                                          <tr key={row._tempId} className="staged-saved-row">
+                                            <td style={{ textAlign: "center" }}>{idx + 1}</td>
+                                            <td className="staged-item-name" title={row.item || "—"}>{row.item || "—"}</td>
+                                            <td className="numeric-cell">{row.quantity}</td>
+                                            <td>{row.unit || "—"}</td>
+                                            <td className="numeric-cell">₹{Number(row.rate || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.basic_value || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.discount_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.cgst_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.ut_sgst_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell">₹{Number(row.igst_amount || 0).toFixed(2)}</td>
+                                            <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
+                                            <td className="staged-actions-cell" style={{ textAlign: "center" }}>
+                                              <button
+                                                type="button"
+                                                className="staged-action-btn edit-staged-btn"
+                                                onClick={() => handleEditStagedItem(idx)}
+                                                title="Edit this item"
+                                              >
+                                                ✎
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="staged-action-btn delete-staged-btn"
+                                                onClick={() => handleDeleteStagedItem(idx)}
+                                                title="Remove this item"
+                                              >
+                                                ✕
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+
+                                        <tr className="table-active-input-row">
+                                          <td style={{ textAlign: "center", fontWeight: "700", color: "#64748b" }}>
+                                            {stagedDailyInputs.length + 1}
+                                          </td>
+                                          <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter raw material name above" : "Select raw material from above")}>
+                                            {(formValues.material_name || formValues.item) ? (
+                                              <div className="table-active-item-badge">
+                                                <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
+                                              </div>
+                                            ) : (
+                                              <div className="table-active-item-placeholder">
+                                                {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td className="numeric-cell">
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              min="0.0001"
+                                              placeholder="0.00"
+                                              className="table-input table-qty-input numeric-input"
+                                              value={formValues.quantity ?? ""}
+                                              onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                            />
+                                          </td>
+                                          <td>
+                                            <select
+                                              className="table-input table-unit-select"
+                                              value={formValues.unit || "num"}
+                                              onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                            >
+                                              <option value="num">num</option>
+                                              <option value="kg">kg</option>
+                                              <option value="litre">litre</option>
+                                              <option value="mtrs">mtrs</option>
+                                              <option value="other">other</option>
+                                            </select>
+                                            {formValues.unit === "other" && (
+                                              <input
+                                                type="text"
+                                                placeholder="Specify unit"
+                                                className="table-input"
+                                                style={{ marginTop: "4px" }}
+                                                value={formValues.unit_other || ""}
+                                                onChange={(e) => handleFormFieldChange("unit_other", e.target.value)}
+                                              />
+                                            )}
+                                          </td>
+                                          <td className="numeric-cell">
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0"
+                                              placeholder="0.00"
+                                              className="table-input table-rate-input numeric-input"
+                                              value={formValues.rate ?? ""}
+                                              onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                            />
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.basic_value || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.discount_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.cgst_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.ut_sgst_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell">
+                                            ₹{Number(formValues.igst_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="numeric-cell table-calculated-cell staged-total-cell">
+                                            ₹{Number(formValues.total_amount || 0).toFixed(2)}
+                                          </td>
+                                          <td style={{ textAlign: "center" }}>
+                                            {editingRecord ? (
+                                              <span style={{ fontSize: "11px", color: "#64748b" }}>Editing</span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                className="table-btn-add-more"
+                                                onClick={handleAddMoreDailyInput}
+                                                title="Add this raw material row to the table"
+                                              >
+                                                + Add
+                                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                      <tfoot>
+                                        <tr className="staged-table-footer">
+                                          <td colSpan={2}>
+                                            <strong>Total ({stagedDailyInputs.length})</strong>
+                                          </td>
+                                          <td className="numeric-cell">
+                                            <strong>
+                                              {Number.isInteger(stagedTotals.quantity)
+                                                ? String(stagedTotals.quantity)
+                                                : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                            </strong>
+                                          </td>
+                                          <td>—</td>
+                                          <td>—</td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                          <td className="numeric-cell staged-total-cell"><strong>₹{stagedTotals.total_amount.toFixed(2)}</strong></td>
+                                          <td>—</td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                {/* SECTION 3: REMARKS */}
+                                {remarksFields.length > 0 && (
+                                  <div className="remarks-fields-row">
+                                    {remarksFields.map(renderField)}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </>
@@ -7174,11 +8301,47 @@ async function handleDeleteSelected() {
                                   }
 
                                   if (activeSection === "dailyInputs") {
+                                    const suppType = record.supplier_type || (record.supplier_id ? "supplier" : "general");
+                                    editValues.supplier_type = suppType;
                                     editValues.type = record.type ?? "raw_material";
                                     editValues.raw_material_id = record.raw_material_id ?? "";
                                     editValues.product_id = record.product_id ?? "";
                                     editValues.element_id = record.element_id ?? "";
                                     editValues.supplier_id = record.supplier_id ?? "";
+                                    editValues.material_name = record.item || "";
+                                    editValues.item = record.item || "";
+                                    if (record.cgst_percent !== undefined && record.cgst_percent !== null) {
+                                      editValues.cgst_percent = record.cgst_percent;
+                                    }
+                                    if (record.ut_sgst_percent !== undefined && record.ut_sgst_percent !== null) {
+                                      editValues.ut_sgst_percent = record.ut_sgst_percent;
+                                    }
+                                    if (record.igst_percent !== undefined && record.igst_percent !== null) {
+                                      editValues.igst_percent = record.igst_percent;
+                                    }
+                                    if (suppType === "general") {
+                                      editValues.supplier_company_name = record.supplier_company_name || record.other_details?.supplier_company_name || record.other_details?.company_name || "";
+                                      editValues.supplier_contact_person = record.supplier_contact_person || record.other_details?.supplier_contact_person || record.other_details?.contact_person || "";
+                                      editValues.supplier_phone = record.supplier_phone || record.other_details?.supplier_phone || record.other_details?.phone || "";
+                                      editValues.supplier_email = record.supplier_email || record.other_details?.supplier_email || record.other_details?.email || "";
+                                      editValues.supplier_address = record.supplier_address || record.other_details?.supplier_address || record.other_details?.address || "";
+                                      editValues.supplier_city = record.supplier_city || record.other_details?.supplier_city || record.other_details?.city || "";
+                                      editValues.supplier_state = record.supplier_state || record.other_details?.supplier_state || record.other_details?.state || "";
+                                      editValues.supplier_pincode = record.supplier_pincode || record.other_details?.supplier_pincode || record.other_details?.pincode || "";
+                                      editValues.supplier_gst_number = record.supplier_gst_number || record.other_details?.supplier_gst_number || record.other_details?.gst_number || "";
+
+                                      const matchedRm = lookupOptions.rawMaterials?.find(
+                                        (m) => String(m.id) === String(record.raw_material_id) || String(m.material_name || "").toLowerCase() === String(record.item || "").toLowerCase()
+                                      );
+                                      if (matchedRm) {
+                                        if (!editValues.hsn_code) editValues.hsn_code = matchedRm.hsn_code || "";
+                                        if (!editValues.unit) editValues.unit = matchedRm.unit || "num";
+                                        if (!editValues.rate) editValues.rate = matchedRm.rate || 0;
+                                        if (editValues.cgst_percent === undefined || editValues.cgst_percent === "") editValues.cgst_percent = matchedRm.cgst_percent || 0;
+                                        if (editValues.ut_sgst_percent === undefined || editValues.ut_sgst_percent === "") editValues.ut_sgst_percent = matchedRm.ut_sgst_percent || 0;
+                                        if (editValues.igst_percent === undefined || editValues.igst_percent === "") editValues.igst_percent = matchedRm.igst_percent || 0;
+                                      }
+                                    }
                                   }
 
                                   setFormType(

@@ -34,7 +34,11 @@ class DailyInputFields(BaseModel):
     discount_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
     hsn_code: str | None = Field(default=None, max_length=20)
     type: Literal["raw_material", "product", "element", "other"] | None = "raw_material"
+    supplier_type: Literal["supplier", "general"] | str | None = "supplier"
     discount_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
+    cgst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
+    ut_sgst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
+    igst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
     amount: Decimal | None = Field(default=Decimal("0"), ge=0)
     cgst_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
     ut_sgst_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
@@ -43,6 +47,17 @@ class DailyInputFields(BaseModel):
     invoice_path: str | None = None
     remarks: str | None = None
     other_details: dict | None = None
+    # Supplier details for general supplier type
+    supplier_company_name: str | None = Field(default=None, max_length=150)
+    supplier_contact_person: str | None = Field(default=None, max_length=150)
+    supplier_phone: str | None = Field(default=None, max_length=50)
+    supplier_email: str | None = Field(default=None, max_length=150)
+    supplier_address: str | None = None
+    supplier_city: str | None = Field(default=None, max_length=100)
+    supplier_state: str | None = Field(default=None, max_length=100)
+    supplier_pincode: str | None = Field(default=None, max_length=20)
+    supplier_gst_number: str | None = Field(default=None, max_length=80)
+
     customer_id: int | None = None
     supplier_id: int | None = None
     raw_material_id: int | None = None
@@ -52,7 +67,12 @@ class DailyInputFields(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    @field_validator("dc_no", "bill_no", "item", "unit", "hsn_code", "invoice_path", "remarks", mode="before")
+    @field_validator(
+        "dc_no", "bill_no", "item", "unit", "hsn_code", "invoice_path", "remarks", "supplier_type",
+        "supplier_company_name", "supplier_contact_person", "supplier_phone", "supplier_email",
+        "supplier_address", "supplier_city", "supplier_state", "supplier_pincode", "supplier_gst_number",
+        mode="before",
+    )
     @classmethod
     def blank_to_none(cls, value):
         return _empty_to_none(value)
@@ -85,7 +105,11 @@ class DailyInputUpdate(BaseModel):
     discount_percent: Decimal | None = Field(default=None, ge=0, le=100)
     hsn_code: str | None = Field(default=None, max_length=20)
     type: Literal["raw_material", "product", "element", "other"] | None = None
+    supplier_type: Literal["supplier", "general"] | str | None = None
     discount_amount: Decimal | None = Field(default=None, ge=0)
+    cgst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    ut_sgst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    igst_percent: Decimal | None = Field(default=None, ge=0, le=100)
     amount: Decimal | None = Field(default=None, ge=0)
     cgst_amount: Decimal | None = Field(default=None, ge=0)
     ut_sgst_amount: Decimal | None = Field(default=None, ge=0)
@@ -93,6 +117,17 @@ class DailyInputUpdate(BaseModel):
     total_amount: Decimal | None = Field(default=None, ge=0)
     invoice_path: str | None = None
     remarks: str | None = None
+    # Supplier details for general supplier type
+    supplier_company_name: str | None = Field(default=None, max_length=150)
+    supplier_contact_person: str | None = Field(default=None, max_length=150)
+    supplier_phone: str | None = Field(default=None, max_length=50)
+    supplier_email: str | None = Field(default=None, max_length=150)
+    supplier_address: str | None = None
+    supplier_city: str | None = Field(default=None, max_length=100)
+    supplier_state: str | None = Field(default=None, max_length=100)
+    supplier_pincode: str | None = Field(default=None, max_length=20)
+    supplier_gst_number: str | None = Field(default=None, max_length=80)
+
     other_details: dict | None = None
     customer_id: int | None = None
     supplier_id: int | None = None
@@ -103,7 +138,12 @@ class DailyInputUpdate(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    @field_validator("dc_no", "bill_no", "item", "unit", "hsn_code", "invoice_path", "remarks", mode="before")
+    @field_validator(
+        "dc_no", "bill_no", "item", "unit", "hsn_code", "invoice_path", "remarks", "supplier_type",
+        "supplier_company_name", "supplier_contact_person", "supplier_phone", "supplier_email",
+        "supplier_address", "supplier_city", "supplier_state", "supplier_pincode", "supplier_gst_number",
+        mode="before",
+    )
     @classmethod
     def blank_to_none(cls, value):
         return _empty_to_none(value)
@@ -123,7 +163,11 @@ class DailyInputRead(BaseModel):
     discount_percent: Decimal | None = None
     hsn_code: str | None = None
     type: Literal["raw_material", "product", "element", "other"] | None = None
+    supplier_type: str | None = "supplier"
     discount_amount: Decimal | None = None
+    cgst_percent: Decimal | None = None
+    ut_sgst_percent: Decimal | None = None
+    igst_percent: Decimal | None = None
     amount: Decimal | None = None
     cgst_amount: Decimal | None = None
     ut_sgst_amount: Decimal | None = None
@@ -131,6 +175,15 @@ class DailyInputRead(BaseModel):
     total_amount: Decimal | None = None
     invoice_path: str | None = None
     remarks: str | None = None
+    supplier_company_name: str | None = None
+    supplier_contact_person: str | None = None
+    supplier_phone: str | None = None
+    supplier_email: str | None = None
+    supplier_address: str | None = None
+    supplier_city: str | None = None
+    supplier_state: str | None = None
+    supplier_pincode: str | None = None
+    supplier_gst_number: str | None = None
     other_details: dict | None = None
     customer_id: int | None = None
     supplier_id: int | None = None

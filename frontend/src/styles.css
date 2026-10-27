@@ -5217,4 +5217,351 @@ tbody tr:last-child td {
   border-color: #16a34a;
   box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25);
 }
+
+/* =========================================
+   DAILY INPUT: SUPPLIER TYPE SELECTOR & GENERAL PANEL
+========================================= */
+
+.supplier-type-selector-card {
+  width: 100%;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  margin-top: 4px;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.supplier-type-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.supplier-type-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.supplier-type-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.supplier-type-required {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.supplier-type-pill-toggle {
+  display: inline-flex;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  gap: 6px;
+}
+
+.supplier-type-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.supplier-type-pill-btn:hover:not(.active) {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.supplier-type-pill-btn.active.supplier-mode {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+}
+
+.supplier-type-pill-btn.active.general-mode {
+  background: #0d9488;
+  color: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 1px 4px rgba(13, 148, 136, 0.3);
+}
+
+.supplier-type-pill-icon {
+  font-size: 14px;
+}
+
+.supplier-type-check {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.supplier-type-badge-hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+/* General Mode Container Card */
+.general-mode-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.general-section-card {
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.general-section-card.values-card {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.general-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.general-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.general-card-subtext {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.general-fields-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  align-items: end;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.general-fields-grid-4 label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.general-fields-grid-4 label.field-span-2 {
+  grid-column: span 2;
+}
+
+.general-fields-grid-4 input,
+.general-fields-grid-4 select {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.general-fields-grid-4 input:focus,
+.general-fields-grid-4 select:focus {
+  border-color: #2563eb;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.general-fields-grid-4 input.readonly-calc {
+  background: #f1f5f9;
+  color: #475467;
+  font-weight: 600;
+  cursor: default;
+}
+
+.general-fields-grid-4 input.total-invoice-highlight {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.general-add-more-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.general-btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #0d9488;
+  color: #ffffff;
+  border: 1px solid #0f766e;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.general-btn-add:hover {
+  background: #0f766e;
+  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3);
+}
+
+.general-supplier-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+/* Raw Material Type Pill Toggle */
+.rm-type-selector-card {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.rm-type-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rm-type-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rm-type-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.rm-type-required {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.rm-type-pill-toggle {
+  display: inline-flex;
+  background: #e2e8f0;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 3px;
+}
+
+.rm-type-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rm-type-pill-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.6);
+  color: #1e293b;
+}
+
+.rm-type-pill-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+}
+
+.rm-type-pill-btn.other-mode.active {
+  background: #0d9488;
+  color: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 1px 4px rgba(13, 148, 136, 0.3);
+}
+
+.rm-type-pill-icon {
+  font-size: 13px;
+}
+
+.rm-type-check {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.rm-type-badge-hint {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #64748b;
+  margin-left: 4px;
+}
+
+.general-rm-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+
 

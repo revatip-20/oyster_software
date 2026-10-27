@@ -478,6 +478,7 @@ export const sections = {
       ["DC_date", "DC Date"],
       ["bill_no", "Bill No."],
       ["bill_date", "Bill Date"],
+      ["supplier_type", "Supplier Type"],
       ["type", "Type"],
       ["supplier_id", "Supplier"],
       ["raw_material_id", "Raw material"],
@@ -502,6 +503,17 @@ export const sections = {
       { name: "DC_date", label: "DC Date", type: "date", required: false, row: 1 },
       { name: "bill_no", label: "Bill No.", required: false, row: 1 },
       { name: "bill_date", label: "Bill Date", type: "date", required: false, row: 1 },
+      {
+        name: "supplier_type",
+        label: "Select Supplier Type",
+        type: "select",
+        required: true,
+        defaultValue: "supplier",
+        options: [
+          { value: "supplier", label: "Supplier" },
+          { value: "general", label: "General" },
+        ],
+      },
       {
         name: "supplier_id",
         label: "Select Supplier",
@@ -625,6 +637,17 @@ export const sections = {
       { name: "DC_date", label: "DC Date", type: "date", required: false, row: 1 },
       { name: "bill_no", label: "Bill No.", required: false, row: 1 },
       { name: "bill_date", label: "Bill Date", type: "date", required: false, row: 1 },
+      {
+        name: "supplier_type",
+        label: "Select Supplier Type",
+        type: "select",
+        required: true,
+        defaultValue: "supplier",
+        options: [
+          { value: "supplier", label: "Supplier" },
+          { value: "general", label: "General" },
+        ],
+      },
       {
         name: "supplier_id",
         label: "Select Supplier",

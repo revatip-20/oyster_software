@@ -26,9 +26,13 @@ class DailyInput(Base):
     discount_percent = Column(Numeric(5, 2), nullable=True, default=0)
     hsn_code = Column(String(20), nullable=True)
     type = Column(String(20), nullable=True)
+    supplier_type = Column(String(50), nullable=True, default="supplier")
 
     # Amount and GST fields
     discount_amount = Column(Numeric(12, 2), nullable=True, default=0)
+    cgst_percent = Column(Numeric(5, 2), nullable=True, default=0)
+    ut_sgst_percent = Column(Numeric(5, 2), nullable=True, default=0)
+    igst_percent = Column(Numeric(5, 2), nullable=True, default=0)
     amount = Column(Numeric(12, 2), nullable=True, default=0)
     cgst_amount = Column(Numeric(12, 2), nullable=True, default=0)
     ut_sgst_amount = Column(Numeric(12, 2), nullable=True, default=0)
@@ -40,6 +44,17 @@ class DailyInput(Base):
 
     # Remarks
     remarks = Column(Text, nullable=True)
+
+    # Supplier details for general supplier type
+    supplier_company_name = Column(String(150), nullable=True)
+    supplier_contact_person = Column(String(150), nullable=True)
+    supplier_phone = Column(String(50), nullable=True)
+    supplier_email = Column(String(150), nullable=True)
+    supplier_address = Column(Text, nullable=True)
+    supplier_city = Column(String(100), nullable=True)
+    supplier_state = Column(String(100), nullable=True)
+    supplier_pincode = Column(String(20), nullable=True)
+    supplier_gst_number = Column(String(80), nullable=True)
 
     # Other details stored as JSON
     other_details = Column(JSON, nullable=True)

@@ -11,6 +11,7 @@ from models.product import Product
 from models.raw_material import RawMaterial
 from models.user import User
 from routes.user import require_roles
+from services.code_generator import get_next_resource_code
 from schemas.daily_input_schema import (
     DailyInputBulkDelete,
     DailyInputCreate,
@@ -44,42 +45,70 @@ async def add_daily_input(
         raise HTTPException(status_code=422, detail="Type is required")
     if data.get("quantity") is None or data.get("quantity") <= 0:
         raise HTTPException(status_code=422, detail="Quantity is required and must be greater than 0")
-    if data.get("type") == "raw_material" and not data.get("raw_material_id"):
-        if data.get("item"):
-            matched_rm = db.query(RawMaterial).filter(
-                RawMaterial.material_name.ilike(str(data["item"]).strip()),
-                RawMaterial.deleted_at.is_(None),
-            ).first()
-            if matched_rm:
-                data["raw_material_id"] = matched_rm.id
-        if not data.get("raw_material_id"):
-            raise HTTPException(status_code=422, detail="Raw material is required")
-    if data.get("type") in ("product", "element") and not (data.get("product_id") or data.get("element_id")):
-        if data.get("item"):
-            matched_prd = db.query(Product).filter(
-                Product.name.ilike(str(data["item"]).strip()),
-                Product.deleted_at.is_(None),
-            ).first()
-            if matched_prd:
-                data["product_id"] = matched_prd.id
-                data["element_id"] = matched_prd.id
-        if not (data.get("product_id") or data.get("element_id")):
-            raise HTTPException(status_code=422, detail="Product is required")
-    if data.get("type") in ("raw_material", "product", "element"):
-        if not data.get("supplier_id") or int(data.get("supplier_id") or 0) <= 0:
-            raise HTTPException(status_code=422, detail="Supplier is required")
-    if data.get("type") == "other":
+
+    supplier_type = data.get("supplier_type") or "supplier"
+    if supplier_type == "general":
+        data["supplier_id"] = None
+        data["raw_material_id"] = None
+        data["product_id"] = None
+        data["element_id"] = None
+        data["customer_id"] = None
         if not data.get("item"):
-            raise HTTPException(status_code=422, detail="Material / item name is required")
-        od = data.get("other_details") or {}
-        if not (od.get("supplier_company_name") or od.get("company_name") or data.get("supplier_company_name")):
-            raise HTTPException(status_code=422, detail="Supplier company name is required")
+            raise HTTPException(status_code=422, detail="Material name is required")
+        if data.get("other_details") is None:
+            data["other_details"] = {}
+        od = data["other_details"]
+        od.setdefault("supplier_type", "general")
+        od.setdefault("material_name", data.get("item"))
+        od.setdefault("hsn_code", data.get("hsn_code"))
+        od.setdefault("unit", data.get("unit"))
+        od.setdefault("rate", float(data["rate"]) if data.get("rate") is not None else 0)
+        od.setdefault("supplier_company_name", data.get("supplier_company_name"))
+        od.setdefault("supplier_contact_person", data.get("supplier_contact_person"))
+        od.setdefault("supplier_phone", data.get("supplier_phone"))
+        od.setdefault("supplier_email", data.get("supplier_email"))
+        od.setdefault("supplier_address", data.get("supplier_address"))
+        od.setdefault("supplier_city", data.get("supplier_city"))
+        od.setdefault("supplier_state", data.get("supplier_state"))
+        od.setdefault("supplier_pincode", data.get("supplier_pincode"))
+        od.setdefault("supplier_gst_number", data.get("supplier_gst_number"))
+    else:
+        if data.get("type") == "raw_material" and not data.get("raw_material_id"):
+            if data.get("item"):
+                matched_rm = db.query(RawMaterial).filter(
+                    RawMaterial.material_name.ilike(str(data["item"]).strip()),
+                    RawMaterial.deleted_at.is_(None),
+                ).first()
+                if matched_rm:
+                    data["raw_material_id"] = matched_rm.id
+            if not data.get("raw_material_id"):
+                raise HTTPException(status_code=422, detail="Raw material is required")
+        if data.get("type") in ("product", "element") and not (data.get("product_id") or data.get("element_id")):
+            if data.get("item"):
+                matched_prd = db.query(Product).filter(
+                    Product.name.ilike(str(data["item"]).strip()),
+                    Product.deleted_at.is_(None),
+                ).first()
+                if matched_prd:
+                    data["product_id"] = matched_prd.id
+                    data["element_id"] = matched_prd.id
+            if not (data.get("product_id") or data.get("element_id")):
+                raise HTTPException(status_code=422, detail="Product is required")
+        if data.get("type") in ("raw_material", "product", "element"):
+            if not data.get("supplier_id") or int(data.get("supplier_id") or 0) <= 0:
+                raise HTTPException(status_code=422, detail="Supplier is required")
+        if data.get("type") == "other":
+            if not data.get("item"):
+                raise HTTPException(status_code=422, detail="Material / item name is required")
+            od = data.get("other_details") or {}
+            if not (od.get("supplier_company_name") or od.get("company_name") or data.get("supplier_company_name")):
+                raise HTTPException(status_code=422, detail="Supplier company name is required")
 
     if data.get("type") == "raw_material":
         data["customer_id"] = None
         data["product_id"] = None
         data["element_id"] = None
-        if data.get("raw_material_id"):
+        if supplier_type != "general" and data.get("raw_material_id"):
             rm = db.query(RawMaterial).filter(RawMaterial.id == data["raw_material_id"]).first()
             if rm:
                 if not data.get("item"):
@@ -151,52 +180,75 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
         raise HTTPException(status_code=422, detail="At least one field must be provided")
 
     effective_type = changes.get("type") or entry.type
+    effective_supplier_type = changes.get("supplier_type") or getattr(entry, "supplier_type", None) or "supplier"
     effective_rm_id = changes.get("raw_material_id") or entry.raw_material_id
     effective_prd_id = changes.get("product_id") or changes.get("element_id") or entry.product_id or entry.element_id
     effective_qty = changes.get("quantity") or entry.quantity
     effective_item = changes.get("item") or entry.item
 
-    if not effective_type:
-        raise HTTPException(status_code=422, detail="Type is required")
-    if effective_qty is None or effective_qty <= 0:
-        raise HTTPException(status_code=422, detail="Quantity is required and must be greater than 0")
-    if effective_type == "raw_material" and not effective_rm_id:
+    if effective_supplier_type == "general":
+        changes["supplier_id"] = None
+        entry.supplier_id = None
+        changes["raw_material_id"] = None
+        entry.raw_material_id = None
+        changes["product_id"] = None
+        entry.product_id = None
+        changes["element_id"] = None
+        entry.element_id = None
+        changes["customer_id"] = None
+        entry.customer_id = None
+        if not effective_item:
+            raise HTTPException(status_code=422, detail="Material name is required")
+        od = dict(changes.get("other_details") or entry.other_details or {})
+        od["supplier_type"] = "general"
         if effective_item:
-            matched_rm = db.query(RawMaterial).filter(
-                RawMaterial.material_name.ilike(str(effective_item).strip()),
-                RawMaterial.deleted_at.is_(None),
-            ).first()
-            if matched_rm:
-                effective_rm_id = matched_rm.id
-                entry.raw_material_id = matched_rm.id
-        if not effective_rm_id:
-            raise HTTPException(status_code=422, detail="Raw material is required")
-    if effective_type in ("product", "element") and not effective_prd_id:
-        if effective_item:
-            matched_prd = db.query(Product).filter(
-                Product.name.ilike(str(effective_item).strip()),
-                Product.deleted_at.is_(None),
-            ).first()
-            if matched_prd:
-                effective_prd_id = matched_prd.id
-                entry.product_id = matched_prd.id
-                entry.element_id = matched_prd.id
-        if not effective_prd_id:
-            raise HTTPException(status_code=422, detail="Product is required")
-    if effective_type in ("raw_material", "product", "element"):
-        effective_supplier_id = changes.get("supplier_id") if "supplier_id" in changes else entry.supplier_id
-        if not effective_supplier_id or int(effective_supplier_id or 0) <= 0:
-            raise HTTPException(status_code=422, detail="Supplier is required")
-    if effective_type == "other" and not effective_item:
-        raise HTTPException(status_code=422, detail="Material / item name is required")
+            od["material_name"] = effective_item
+        for k in [
+            "supplier_company_name", "supplier_contact_person", "supplier_phone",
+            "supplier_email", "supplier_address", "supplier_city",
+            "supplier_state", "supplier_pincode", "supplier_gst_number"
+        ]:
+            if k in changes and changes[k] is not None:
+                od[k] = changes[k]
+        changes["other_details"] = od
+    else:
+        if effective_type == "raw_material" and not effective_rm_id:
+            if effective_item:
+                matched_rm = db.query(RawMaterial).filter(
+                    RawMaterial.material_name.ilike(str(effective_item).strip()),
+                    RawMaterial.deleted_at.is_(None),
+                ).first()
+                if matched_rm:
+                    effective_rm_id = matched_rm.id
+                    entry.raw_material_id = matched_rm.id
+            if not effective_rm_id:
+                raise HTTPException(status_code=422, detail="Raw material is required")
+        if effective_type in ("product", "element") and not effective_prd_id:
+            if effective_item:
+                matched_prd = db.query(Product).filter(
+                    Product.name.ilike(str(effective_item).strip()),
+                    Product.deleted_at.is_(None),
+                ).first()
+                if matched_prd:
+                    effective_prd_id = matched_prd.id
+                    entry.product_id = matched_prd.id
+                    entry.element_id = matched_prd.id
+            if not effective_prd_id:
+                raise HTTPException(status_code=422, detail="Product is required")
+        if effective_type in ("raw_material", "product", "element"):
+            effective_supplier_id = changes.get("supplier_id") if "supplier_id" in changes else entry.supplier_id
+            if not effective_supplier_id or int(effective_supplier_id or 0) <= 0:
+                raise HTTPException(status_code=422, detail="Supplier is required")
+        if effective_type == "other" and not effective_item:
+            raise HTTPException(status_code=422, detail="Material / item name is required")
 
-    if effective_type == "raw_material" and effective_rm_id:
-        changes["raw_material_id"] = effective_rm_id
-        changes["type"] = "raw_material"
-    elif effective_type in ("product", "element") and effective_prd_id:
-        changes["product_id"] = effective_prd_id
-        changes["element_id"] = effective_prd_id
-        changes["type"] = effective_type
+        if effective_type == "raw_material" and effective_rm_id:
+            changes["raw_material_id"] = effective_rm_id
+            changes["type"] = "raw_material"
+        elif effective_type in ("product", "element") and effective_prd_id:
+            changes["product_id"] = effective_prd_id
+            changes["element_id"] = effective_prd_id
+            changes["type"] = effective_type
 
     for field, value in changes.items():
         setattr(entry, field, value)
@@ -205,7 +257,7 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
         entry.customer_id = None
         entry.product_id = None
         entry.element_id = None
-        if entry.raw_material_id:
+        if effective_supplier_type != "general" and entry.raw_material_id:
             rm = db.query(RawMaterial).filter(RawMaterial.id == entry.raw_material_id).first()
             if rm:
                 if not entry.item:
