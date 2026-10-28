@@ -3,12 +3,13 @@ const fs = require("node:fs/promises");
 const nodeFs = require("node:fs");
 const path = require("node:path");
 
-// Load environment variables from .env file if present
+// Load environment variables from frontend/.env file if present
 function loadEnv() {
   const envPaths = [
     path.join(__dirname, "..", ".env"),
-    path.join(process.cwd(), ".env"),
-    path.join(__dirname, "..", "..", ".env"),
+    path.join(process.cwd(), "frontend", ".env"),
+    ...(process.resourcesPath ? [path.join(process.resourcesPath, ".env")] : []),
+    ...(process.execPath ? [path.join(path.dirname(process.execPath), ".env")] : []),
   ];
 
   for (const envPath of envPaths) {
@@ -28,13 +29,18 @@ function loadEnv() {
             ) {
               val = val.slice(1, -1);
             }
-            if (process.env[key] === undefined) {
+            if (val) {
               process.env[key] = val;
+              if (key === "BACKEND_API_URL" && !process.env.VITE_BACKEND_API_URL) {
+                process.env.VITE_BACKEND_API_URL = val;
+              }
+              if (key === "VITE_BACKEND_API_URL" && !process.env.BACKEND_API_URL) {
+                process.env.BACKEND_API_URL = val;
+              }
             }
           }
         }
         console.info(`[electron] Loaded environment variables from: ${envPath}`);
-        break;
       }
     } catch (err) {
       console.warn(`[electron] Could not load .env from ${envPath}:`, err.message);
@@ -49,11 +55,11 @@ function getBackendApiUrl() {
     process.env.VITE_BACKEND_API_URL ||
     process.env.BACKEND_URL ||
     process.env.VITE_BACKEND_URL ||
-    "http://127.0.0.1:8000";
+    "https://oyster-software.onrender.com";
 
   url = String(url).trim().replace(/\/+$/, "");
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    url = `http://${url}`;
+    url = `https://${url}`;
   }
   return url;
 }

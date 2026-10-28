@@ -1,5 +1,5 @@
 {
-  "name": "desktop-frontend",
+  "name": "oyster-software",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -30,8 +30,8 @@
     "shell-quote": "^1.12.0"
   },
   "build": {
-    "appId": "com.desktop.frontend",
-    "productName": "Desktop Frontend",
+    "appId": "com.oyster.software",
+    "productName": "Oyster Software",
     "directories": {
       "output": "release"
     },

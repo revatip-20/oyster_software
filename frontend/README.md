@@ -25,9 +25,8 @@ npm run electron:dev
 ```
 
 Vite serves the UI at `http://127.0.0.1:5173`, and Electron opens it in a
-desktop window with live reload. The login request is made by Electron's main
-process to `http://127.0.0.1:8000/users/login` by default, so browser CORS is
-not required. Set `BACKEND_API_URL` to use a different backend base URL.
+desktop window with live reload. API requests are routed to the Backend API URL
+specified in `.env` (`BACKEND_API_URL`), defaulting to `https://oyster-software.onrender.com`.
 The development command automatically restarts Electron when a main-process or
 preload file changes. API requests and HTTP response statuses are logged in
 the terminal running Electron.
