@@ -501,3 +501,55 @@ ALTER TABLE product ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE
 ALTER TABLE product DROP CONSTRAINT IF EXISTS product_type_check;
 ALTER TABLE cost_data DROP CONSTRAINT IF EXISTS cost_data_type_check;
 
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150);
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE;
+ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS details TEXT;
+ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150);
+
+CREATE TABLE IF NOT EXISTS daily_dispatch (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(20) UNIQUE,
+    type VARCHAR(50),
+    "DC_no" VARCHAR(50),
+    "DC_date" DATE,
+    bill_no VARCHAR(50),
+    bill_date DATE,
+    item VARCHAR(150),
+    zach_code VARCHAR(150),
+    po_batch_no VARCHAR(100),
+    sach_code VARCHAR(100),
+    ls VARCHAR(100),
+    quantity NUMERIC(12, 4),
+    bin VARCHAR(100),
+    boxes VARCHAR(100),
+    unit VARCHAR(30),
+    hsn_code VARCHAR(50),
+    rate NUMERIC(12, 2) DEFAULT 0,
+    basic_value NUMERIC(12, 2) DEFAULT 0,
+    discount_percent NUMERIC(5, 2) DEFAULT 0,
+    discount_amount NUMERIC(12, 2) DEFAULT 0,
+    amount NUMERIC(12, 2) DEFAULT 0,
+    cgst_percent NUMERIC(5, 2) DEFAULT 0,
+    ut_sgst_percent NUMERIC(5, 2) DEFAULT 0,
+    igst_percent NUMERIC(5, 2) DEFAULT 0,
+    cgst_amount NUMERIC(12, 2) DEFAULT 0,
+    ut_sgst_amount NUMERIC(12, 2) DEFAULT 0,
+    igst_amount NUMERIC(12, 2) DEFAULT 0,
+    total_amount NUMERIC(12, 2) DEFAULT 0,
+    remarks TEXT,
+    other_details JSONB,
+    daily_input_id INTEGER REFERENCES daily_input(id) ON DELETE SET NULL,
+    product_id INTEGER REFERENCES product(id) ON DELETE SET NULL,
+    customer_id INTEGER REFERENCES customer(id) ON DELETE SET NULL,
+    supplier_id INTEGER REFERENCES supplier(id) ON DELETE SET NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ NULL
+);
+
+ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_dc_no VARCHAR(50);
+ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_dc_date DATE;
+ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_quantity NUMERIC(12, 4);
+ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS ok NUMERIC(12, 4);
+ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS reject NUMERIC(12, 4);

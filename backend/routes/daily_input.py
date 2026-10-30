@@ -50,8 +50,9 @@ async def add_daily_input(
     if supplier_type == "general":
         data["supplier_id"] = None
         data["raw_material_id"] = None
-        data["product_id"] = None
-        data["element_id"] = None
+        if data.get("type") not in ("product", "element"):
+            data["product_id"] = None
+            data["element_id"] = None
         data["customer_id"] = None
         if not data.get("item"):
             raise HTTPException(status_code=422, detail="Material name is required")
@@ -60,7 +61,13 @@ async def add_daily_input(
         od = data["other_details"]
         od.setdefault("supplier_type", "general")
         od.setdefault("material_name", data.get("item"))
+        od.setdefault("zach_code", data.get("zach_code"))
         od.setdefault("hsn_code", data.get("hsn_code"))
+        od.setdefault("po_batch_no", data.get("po_batch_no"))
+        od.setdefault("ls", data.get("ls"))
+        od.setdefault("sach_code", data.get("sach_code"))
+        od.setdefault("bin", data.get("bin"))
+        od.setdefault("boxes", data.get("boxes"))
         od.setdefault("unit", data.get("unit"))
         od.setdefault("rate", float(data["rate"]) if data.get("rate") is not None else 0)
         od.setdefault("supplier_company_name", data.get("supplier_company_name"))
@@ -130,11 +137,32 @@ async def add_daily_input(
         target_id = data.get("product_id") or data.get("element_id")
         data["product_id"] = target_id
         data["element_id"] = target_id
+        data["rate"] = 0
+        data["basic_value"] = 0
+        data["discount_percent"] = 0
+        data["discount_amount"] = 0
+        data["amount"] = 0
+        data["cgst_percent"] = 0
+        data["ut_sgst_percent"] = 0
+        data["igst_percent"] = 0
+        data["cgst_amount"] = 0
+        data["ut_sgst_amount"] = 0
+        data["igst_amount"] = 0
+        data["total_amount"] = data.get("total_amount") if data.get("total_amount") is not None else 0
         if target_id:
             prd = db.query(Product).filter(Product.id == target_id).first()
             if prd:
                 if not data.get("item"):
                     data["item"] = prd.name
+                prd_updated = False
+                for pfield in ("zach_code", "hsn_code", "po_batch_no", "ls", "sach_code", "bin", "boxes"):
+                    if not data.get(pfield) and getattr(prd, pfield, None):
+                        data[pfield] = getattr(prd, pfield)
+                    elif data.get(pfield) and data.get(pfield) != getattr(prd, pfield, None):
+                        setattr(prd, pfield, data[pfield])
+                        prd_updated = True
+                if prd_updated:
+                    prd.updated_at = datetime.now(timezone.utc)
     elif data.get("type") == "other":
         data["customer_id"] = None
         data["supplier_id"] = None
@@ -191,10 +219,11 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
         entry.supplier_id = None
         changes["raw_material_id"] = None
         entry.raw_material_id = None
-        changes["product_id"] = None
-        entry.product_id = None
-        changes["element_id"] = None
-        entry.element_id = None
+        if effective_type not in ("product", "element"):
+            changes["product_id"] = None
+            entry.product_id = None
+            changes["element_id"] = None
+            entry.element_id = None
         changes["customer_id"] = None
         entry.customer_id = None
         if not effective_item:
@@ -206,7 +235,8 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
         for k in [
             "supplier_company_name", "supplier_contact_person", "supplier_phone",
             "supplier_email", "supplier_address", "supplier_city",
-            "supplier_state", "supplier_pincode", "supplier_gst_number"
+            "supplier_state", "supplier_pincode", "supplier_gst_number",
+            "zach_code", "hsn_code", "po_batch_no", "ls", "sach_code", "bin", "boxes",
         ]:
             if k in changes and changes[k] is not None:
                 od[k] = changes[k]
@@ -280,11 +310,35 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
         target_id = changes.get("product_id", changes.get("element_id", entry.product_id or entry.element_id))
         entry.product_id = target_id
         entry.element_id = target_id
+        entry.rate = 0
+        entry.basic_value = 0
+        entry.discount_percent = 0
+        entry.discount_amount = 0
+        entry.amount = 0
+        entry.cgst_percent = 0
+        entry.ut_sgst_percent = 0
+        entry.igst_percent = 0
+        entry.cgst_amount = 0
+        entry.ut_sgst_amount = 0
+        entry.igst_amount = 0
+        if "total_amount" in changes and changes["total_amount"] is not None:
+            entry.total_amount = changes["total_amount"]
+        elif entry.total_amount is None:
+            entry.total_amount = 0
         if target_id:
             prd = db.query(Product).filter(Product.id == target_id).first()
             if prd:
                 if not entry.item:
                     entry.item = prd.name
+                prd_updated = False
+                for pfield in ("zach_code", "hsn_code", "po_batch_no", "ls", "sach_code", "bin", "boxes"):
+                    if not getattr(entry, pfield, None) and getattr(prd, pfield, None):
+                        setattr(entry, pfield, getattr(prd, pfield))
+                    elif pfield in changes and changes[pfield] and changes[pfield] != getattr(prd, pfield, None):
+                        setattr(prd, pfield, changes[pfield])
+                        prd_updated = True
+                if prd_updated:
+                    prd.updated_at = datetime.now(timezone.utc)
     elif entry.type == "other":
         entry.raw_material_id = None
         entry.product_id = None

@@ -1188,7 +1188,7 @@ function DailyInputSupplierPicker({
               {onAddNewSupplier && (
                 <button
                   type="button"
-                  className="di-add-btn-quick di-add-btn-quick-sup"
+                  className="di-add-btn-quick di-add-btn-quick-rm"
                   onClick={() => onAddNewSupplier(searchTerm.trim())}
                   title="Supplier does not exist? Click to add it"
                 >
@@ -1223,7 +1223,7 @@ function DailyInputSupplierPicker({
                           <div className="di-not-found-actions">
                             <button
                               type="button"
-                              className="di-add-btn-rm di-add-btn-quick-sup"
+                              className="di-add-btn-rm di-add-btn-quick-rm"
                               onClick={() => onAddNewSupplier(searchTerm.trim())}
                             >
                               + Supplier does not exist? Add it
@@ -1369,6 +1369,8 @@ function DailyInputRawMaterialPicker({
       id: rm.id,
       material_name: rm.material_name || `Raw Material #${rm.id}`,
       code: rm.code,
+      zach_code: rm.zach_code,
+      details: rm.details,
       unit: rm.unit,
       rate: rm.standard_rate !== undefined && rm.standard_rate !== null ? rm.standard_rate : rm.rate,
       hsn_code: rm.hsn_code,
@@ -1383,13 +1385,18 @@ function DailyInputRawMaterialPicker({
     return list.filter((m) => {
       const name = String(m.material_name || "").trim().toLowerCase();
       const code = String(m.code || "").trim().toLowerCase();
+      const zach = String(m.zach_code || "").trim().toLowerCase();
+      const det = String(m.details || "").trim().toLowerCase();
       const hsn = String(m.hsn_code || "").trim().toLowerCase();
       const cat = String(m.category || "").trim().toLowerCase();
       return (
         name.startsWith(q) ||
         (code && code.startsWith(q)) ||
+        (zach && zach.startsWith(q)) ||
         name.includes(q) ||
         code.includes(q) ||
+        zach.includes(q) ||
+        det.includes(q) ||
         hsn.includes(q) ||
         cat.includes(q)
       );
@@ -1569,6 +1576,8 @@ function DailyInputRawMaterialPicker({
                         <div className="di-item-info">
                           <span className="di-item-name">{m.material_name}</span>
                           {m.code && <span className="di-item-code">[{m.code}]</span>}
+                          {m.zach_code && <span className="di-item-zach">Zach: {m.zach_code}</span>}
+                          {m.details && <span className="di-item-subtype">({m.details})</span>}
                           {m.unit && <span className="di-item-subtype">Unit: {m.unit}</span>}
                           {m.category && <span className="di-item-subtype">📁 {m.category}</span>}
                         </div>
@@ -1578,6 +1587,320 @@ function DailyInputRawMaterialPicker({
                             <span className="di-meta-pill">₹{Number(m.rate).toFixed(2)}</span>
                           )}
                           {m.hsn_code && <span className="di-meta-pill">HSN: {m.hsn_code}</span>}
+                          <span className={`di-select-cta ${isSelected ? "active" : ""}`}>
+                            {isSelected ? "Selected ✓" : "Select →"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DailyInputProductPicker({
+  products = [],
+  selectedProductId = "",
+  selectedItemName = "",
+  onSelect,
+  onDeselect,
+  onAddNewProduct,
+  disabled = false,
+  isLoading = false,
+  error = "",
+  onRetry,
+  hasError = false,
+  required = true,
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const selectedItem = useMemo(() => {
+    if (selectedProductId) {
+      const p = products.find((prod) => String(prod.id) === String(selectedProductId));
+      if (p) {
+        return {
+          ...p,
+          _itemType: "product",
+          _displayName: p.name || `Product #${p.id}`,
+        };
+      }
+      return {
+        id: selectedProductId,
+        name: selectedItemName || `Product #${selectedProductId}`,
+        _itemType: "product",
+        _displayName: selectedItemName || `Product #${selectedProductId}`,
+      };
+    }
+    if (selectedItemName) {
+      const matched = products.find(
+        (p) => String(p.name || "").trim().toLowerCase() === String(selectedItemName).trim().toLowerCase()
+      );
+      if (matched) {
+        return {
+          ...matched,
+          _itemType: "product",
+          _displayName: matched.name,
+        };
+      }
+      return {
+        id: "custom",
+        name: selectedItemName,
+        _itemType: "product",
+        _displayName: selectedItemName,
+      };
+    }
+    return null;
+  }, [selectedProductId, selectedItemName, products]);
+
+  const filteredProducts = useMemo(() => {
+    const list = products.map((p) => ({
+      id: p.id,
+      name: p.name || `Product #${p.id}`,
+      code: p.code,
+      type: p.type,
+      unit: p.unit || "num",
+      zach_code: p.zach_code,
+      sach_code: p.sach_code,
+      hsn_code: p.hsn_code,
+      bin: p.bin,
+      boxes: p.boxes,
+      po_batch_no: p.po_batch_no,
+      ls: p.ls,
+      _orig: p,
+    }));
+
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return list;
+
+    return list.filter((p) => {
+      const name = String(p.name || "").trim().toLowerCase();
+      const code = String(p.code || "").trim().toLowerCase();
+      const zach = String(p.zach_code || "").trim().toLowerCase();
+      const sach = String(p.sach_code || "").trim().toLowerCase();
+      const hsn = String(p.hsn_code || "").trim().toLowerCase();
+      const bin = String(p.bin || "").trim().toLowerCase();
+      const boxes = String(p.boxes || "").trim().toLowerCase();
+      const po = String(p.po_batch_no || "").trim().toLowerCase();
+      const lsVal = String(p.ls || "").trim().toLowerCase();
+      const pType = String(p.type || "").trim().toLowerCase();
+      return (
+        name.startsWith(q) ||
+        (code && code.startsWith(q)) ||
+        (zach && zach.startsWith(q)) ||
+        (sach && sach.startsWith(q)) ||
+        name.includes(q) ||
+        code.includes(q) ||
+        zach.includes(q) ||
+        sach.includes(q) ||
+        hsn.includes(q) ||
+        bin.includes(q) ||
+        boxes.includes(q) ||
+        po.includes(q) ||
+        lsVal.includes(q) ||
+        pType.includes(q)
+      );
+    });
+  }, [products, searchTerm]);
+
+  const handleProductClick = (p) => {
+    if (disabled || !p) return;
+    onSelect(p._orig || p);
+  };
+
+  return (
+    <div className="di-picker-container di-product-picker-container">
+      <div className={`di-box ${hasError && !selectedItem ? "di-box-error" : ""}`}>
+        {/* Header with Selected Pill or Instruction */}
+        <div className="di-picker-header">
+          <span className="di-picker-title">
+            Product Selection {required ? "*" : ""}{" "}
+            <span className="di-picker-subtext">
+              {searchTerm.trim()
+                ? `(${filteredProducts.length} matching of ${products.length})`
+                : `(${products.length} available)`}
+            </span>
+          </span>
+
+          {selectedItem ? (
+            <div className="di-selected-pill">
+              <span className="di-type-badge" style={{ background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                ✓ PRODUCT SELECTED
+              </span>
+              <span className="di-selected-name">
+                <strong>{selectedItem._displayName || selectedItem.name}</strong>
+                {selectedItem.code && ` [${selectedItem.code}]`}
+                {selectedItem.type && ` • Type: ${selectedItem.type}`}
+                {selectedItem.unit && ` • Unit: ${selectedItem.unit}`}
+                {selectedItem.zach_code && ` • Zach: ${selectedItem.zach_code}`}
+                {selectedItem.hsn_code && ` • HSN: ${selectedItem.hsn_code}`}
+                {selectedItem.po_batch_no && ` • P.O./Batch: ${selectedItem.po_batch_no}`}
+                {selectedItem.ls && ` • Ls: ${selectedItem.ls}`}
+                {selectedItem.sach_code && ` • Sach: ${selectedItem.sach_code}`}
+                {selectedItem.bin && ` • Bin: ${selectedItem.bin}`}
+                {selectedItem.boxes && ` • Boxes: ${selectedItem.boxes}`}
+              </span>
+              <button
+                type="button"
+                className="di-deselect-btn"
+                onClick={onDeselect}
+                title="Change or deselect this product"
+                disabled={disabled}
+              >
+                ✕ Change
+              </button>
+            </div>
+          ) : (
+            <div className="di-unselected-warning">
+              <span className="di-warn-icon">👉</span>
+              <span>
+                Please search for and select a <strong>Product</strong> from the list below {required ? "*" : ""}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Search Bar & List (when no product is selected) */}
+        {!selectedItem && (
+          <>
+            <div className="di-control-bar">
+              <div className="di-search-wrap">
+                <span className="di-search-icon" aria-hidden="true">🔍</span>
+                <input
+                  type="text"
+                  className="di-search-input"
+                  placeholder="Search product starting with (e.g. 'C')... (Press Enter to select)"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (filteredProducts.length > 0) {
+                        handleProductClick(filteredProducts[0]);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!selectedItem && searchTerm.trim() && filteredProducts.length === 1) {
+                      handleProductClick(filteredProducts[0]);
+                    }
+                  }}
+                  disabled={disabled || isLoading}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    className="di-clear-search-btn"
+                    onClick={() => setSearchTerm("")}
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {onAddNewProduct && (
+                <button
+                  type="button"
+                  className="di-add-btn-quick di-add-btn-quick-prd"
+                  onClick={() => onAddNewProduct(searchTerm.trim())}
+                  title="Product does not exist? Click to add it"
+                  style={{ background: "#7c3aed", borderColor: "#6d28d9", color: "#ffffff" }}
+                >
+                  + Product does not exist? Add it
+                </button>
+              )}
+            </div>
+
+            {error && (
+              <div className="di-picker-error">
+                {error} {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+              </div>
+            )}
+
+            {/* Products List */}
+            <div className="di-list-container">
+              <div className="di-list-scroll">
+                {isLoading ? (
+                  <div className="di-list-loading">Loading products…</div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="di-list-empty">
+                    <div className="di-not-found-card">
+                      <div className="di-not-found-icon-wrap">
+                        <span className="di-not-found-icon">🔍</span>
+                      </div>
+                      <p className="di-not-found-msg">
+                        <strong>"{searchTerm.trim()}"</strong> does not exist in Products.
+                      </p>
+                      {onAddNewProduct && (
+                        <div className="di-not-found-prompt">
+                          <span className="di-not-found-q">Cannot find product?</span>
+                          <div className="di-not-found-actions">
+                            <button
+                              type="button"
+                              className="di-add-btn-prd di-add-btn-quick-prd"
+                              onClick={() => onAddNewProduct(searchTerm.trim())}
+                              style={{ background: "#7c3aed", borderColor: "#6d28d9", color: "#ffffff" }}
+                            >
+                              + Product does not exist? Add it
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className="di-clear-filter-link"
+                        onClick={() => setSearchTerm("")}
+                      >
+                        Clear search
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  filteredProducts.map((p) => {
+                    const isSelected = selectedItem && String(selectedItem.id) === String(p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        className={`di-item-row ${isSelected ? "selected" : ""}`}
+                        onClick={() => handleProductClick(p)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleProductClick(p);
+                          }
+                        }}
+                      >
+                        <div className="di-row-radio">
+                          <span className={`di-radio-circle ${isSelected ? "active" : ""}`} />
+                        </div>
+
+                        <span className="di-type-tag" style={{ background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                          PRODUCT
+                        </span>
+
+                        <div className="di-item-info">
+                          <span className="di-item-name">{p.name}</span>
+                          {p.code && <span className="di-item-code">[{p.code}]</span>}
+                          {p.type && <span className="di-item-subtype">Type: {p.type}</span>}
+                          {p.unit && <span className="di-item-subtype">Unit: {p.unit}</span>}
+                        </div>
+
+                        <div className="di-item-meta">
+                          {p.zach_code && <span className="di-meta-pill">Zach: {p.zach_code}</span>}
+                          {p.hsn_code && <span className="di-meta-pill">HSN: {p.hsn_code}</span>}
+                          {p.po_batch_no && <span className="di-meta-pill">P.O./Batch: {p.po_batch_no}</span>}
+                          {p.ls && <span className="di-meta-pill">Ls: {p.ls}</span>}
+                          {p.sach_code && <span className="di-meta-pill">Sach: {p.sach_code}</span>}
+                          {p.bin && <span className="di-meta-pill">Bin: {p.bin}</span>}
+                          {p.boxes && <span className="di-meta-pill">Boxes: {p.boxes}</span>}
                           <span className={`di-select-cta ${isSelected ? "active" : ""}`}>
                             {isSelected ? "Selected ✓" : "Select →"}
                           </span>
@@ -1671,9 +1994,9 @@ function Workspace({ user, onLogout }) {
   }, [availableNavigation]);
 
   const [openDropdowns, setOpenDropdowns] = useState({
-    staff: true,
-    masterFiles: true,
-    parties: true,
+    masterFiles: false,
+    parties: false,
+    staff: false,
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -1748,6 +2071,7 @@ const toggleSelectAll = (rows) => {
     customers: [],
     rawMaterials: [],
     products: [],
+    dailyInputs: [],
   });
   
   const [lookupLoading, setLookupLoading] = useState({
@@ -1755,7 +2079,9 @@ const toggleSelectAll = (rows) => {
     customers: false,
     rawMaterials: false,
     products: false,
+    dailyInputs: false,
   });
+  const [dailyDispatchType, setDailyDispatchType] = useState("Job work");
   const [lookupErrors, setLookupErrors] = useState({});
   const [lookupRequestVersion, setLookupRequestVersion] = useState(0);
   const [dashboardCounts, setDashboardCounts] = useState({});
@@ -1767,6 +2093,7 @@ const toggleSelectAll = (rows) => {
   const [formType, setFormType] = useState("raw_material");
   const [formValues, setFormValues] = useState({});
   const [stagedDailyInputs, setStagedDailyInputs] = useState([]);
+  const [stagedDailyDispatches, setStagedDailyDispatches] = useState([]);
 
   const stagedTotals = useMemo(() => {
     return stagedDailyInputs.reduce(
@@ -1809,7 +2136,10 @@ const toggleSelectAll = (rows) => {
     setPageError("");
     setQuickRmError("");
     setQuickAddRawMaterialModal({
+      zach_mode: "without_zach_code",
+      zach_code: "",
       material_name: searchedName || "",
+      details: "",
       hsn_code: "",
       unit: "num",
       rate: "",
@@ -1830,6 +2160,13 @@ const toggleSelectAll = (rows) => {
       return;
     }
 
+    const zachMode = quickAddRawMaterialModal?.zach_mode || "without_zach_code";
+    const zachCodeVal = String(quickAddRawMaterialModal?.zach_code || "").trim();
+    if (zachMode === "with_zach_code" && !zachCodeVal) {
+      setQuickRmError("Zach No is required when 'zach no' is selected.");
+      return;
+    }
+
     setIsSavingQuickRm(true);
 
     const resolvedUnit =
@@ -1839,6 +2176,9 @@ const toggleSelectAll = (rows) => {
 
     const payload = {
       material_name: name,
+      has_zach_code: zachMode === "with_zach_code",
+      zach_code: zachMode === "with_zach_code" ? zachCodeVal : null,
+      details: quickAddRawMaterialModal.details ? String(quickAddRawMaterialModal.details).trim() : null,
       hsn_code: quickAddRawMaterialModal.hsn_code ? String(quickAddRawMaterialModal.hsn_code).trim() : null,
       unit: resolvedUnit,
       rate: quickAddRawMaterialModal.rate !== "" && quickAddRawMaterialModal.rate !== null ? Number(quickAddRawMaterialModal.rate) : 0,
@@ -1890,9 +2230,11 @@ const toggleSelectAll = (rows) => {
     setQuickPrdError("");
     setQuickAddProductModal({
       name: searchedName || "",
-      product_mode: "without_zach_code",
+      product_mode: "with_zach_code",
       type: "element",
-      zach_code: "",
+      ls: "",
+      hsn_code: "",
+      sach_code: "",
       element_id: "",
       welded_element_id: "",
       raw_materials: [],
@@ -1909,7 +2251,7 @@ const toggleSelectAll = (rows) => {
       return;
     }
 
-    const mode = quickAddProductModal.product_mode || "without_zach_code";
+    const mode = quickAddProductModal.product_mode || "with_zach_code";
     const resolvedType =
       quickAddProductModal.type === "other"
         ? (String(quickAddProductModal.type_other || "").trim() || "other")
@@ -1920,14 +2262,12 @@ const toggleSelectAll = (rows) => {
       type: resolvedType,
     };
 
+    payload.ls = quickAddProductModal.ls ? String(quickAddProductModal.ls).trim() : null;
+    payload.hsn_code = quickAddProductModal.hsn_code ? String(quickAddProductModal.hsn_code).trim() : null;
+    payload.sach_code = quickAddProductModal.sach_code ? String(quickAddProductModal.sach_code).trim() : null;
+
     if (mode === "with_zach_code") {
-      const zc = String(quickAddProductModal.zach_code || "").trim();
-      if (!zc) {
-        setQuickPrdError("Zach code is required when 'with zach code' is selected.");
-        return;
-      }
       payload.has_zach_code = true;
-      payload.zach_code = zc;
     } else {
       payload.has_zach_code = false;
       payload.zach_code = null;
@@ -2073,6 +2413,12 @@ const toggleSelectAll = (rows) => {
       item: "",
       unit: newType === "product" ? "num" : "",
       hsn_code: "",
+      zach_code: "",
+      po_batch_no: "",
+      ls: "",
+      sach_code: "",
+      bin: "",
+      boxes: "",
       rate: "",
       basic_value: 0,
       discount_percent: 0,
@@ -2092,15 +2438,39 @@ const toggleSelectAll = (rows) => {
     setPageError("");
     setFormValues((prev) => {
       const isOther = rmType === "other";
+      const isProduct = rmType === "product";
+      const nextType = isOther ? "other" : (isProduct ? "product" : "raw_material");
       return {
         ...prev,
         raw_material_type: rmType,
-        type: isOther ? "other" : "raw_material",
-        raw_material_id: isOther ? "" : prev.raw_material_id,
-        product_id: "",
-        element_id: "",
-        item: isOther ? (prev.material_name || prev.item || "") : prev.item,
-        material_name: isOther ? (prev.material_name || prev.item || "") : prev.material_name,
+        type: nextType,
+        raw_material_id: rmType === "raw_material" ? prev.raw_material_id : "",
+        product_id: isProduct ? prev.product_id : "",
+        element_id: isProduct ? prev.element_id : "",
+        item: isOther ? (prev.material_name || prev.item || "") : (isProduct ? (prev.item || "") : prev.item),
+        material_name: isOther ? (prev.material_name || prev.item || "") : (isProduct ? (prev.item || "") : prev.material_name),
+        unit: isProduct ? (prev.unit || "num") : prev.unit,
+        ...(isProduct ? {
+          rate: "",
+          basic_value: 0,
+          discount_percent: 0,
+          discount_amount: 0,
+          amount: 0,
+          cgst_percent: 0,
+          ut_sgst_percent: 0,
+          igst_percent: 0,
+          cgst_amount: 0,
+          ut_sgst_amount: 0,
+          igst_amount: 0,
+          total_amount: 0,
+        } : {
+          zach_code: "",
+          po_batch_no: "",
+          ls: "",
+          sach_code: "",
+          bin: "",
+          boxes: "",
+        }),
       };
     });
   }
@@ -2125,6 +2495,12 @@ const toggleSelectAll = (rows) => {
           material_name: selectedRm?.material_name || item?.material_name || item?.name || prev.material_name || "",
           unit: selectedRm?.unit ?? item?.unit ?? prev.unit ?? "",
           hsn_code: selectedRm?.hsn_code ?? item?.hsn_code ?? prev.hsn_code ?? "",
+          zach_code: "",
+          po_batch_no: "",
+          ls: "",
+          sach_code: "",
+          bin: "",
+          boxes: "",
           rate: (selectedRm?.rate !== undefined && selectedRm?.rate !== null && selectedRm?.rate !== "") ? selectedRm.rate : prev.rate,
           discount_percent: (selectedRm?.discount_percent !== undefined && selectedRm?.discount_percent !== null) ? selectedRm.discount_percent : (prev.discount_percent || 0),
           cgst_percent: (selectedRm?.cgst_percent !== undefined && selectedRm?.cgst_percent !== null) ? selectedRm.cgst_percent : (prev.cgst_percent || 0),
@@ -2160,12 +2536,32 @@ const toggleSelectAll = (rows) => {
       setFormValues((prev) => ({
         ...prev,
         type: "product",
+        raw_material_type: "product",
         product_id: validPrdId,
         element_id: validPrdId,
         raw_material_id: "",
         item: selectedPrd?.name || item?.name || prev.item || "",
         material_name: selectedPrd?.name || item?.name || prev.material_name || "",
-        unit: prev.unit || "num",
+        unit: selectedPrd?.unit || prev.unit || "num",
+        hsn_code: selectedPrd?.hsn_code ?? item?.hsn_code ?? "",
+        zach_code: selectedPrd?.zach_code ?? item?.zach_code ?? "",
+        po_batch_no: selectedPrd?.po_batch_no ?? item?.po_batch_no ?? "",
+        ls: selectedPrd?.ls ?? item?.ls ?? "",
+        sach_code: selectedPrd?.sach_code ?? item?.sach_code ?? "",
+        bin: selectedPrd?.bin ?? item?.bin ?? "",
+        boxes: selectedPrd?.boxes ?? item?.boxes ?? "",
+        rate: "",
+        basic_value: 0,
+        discount_percent: 0,
+        discount_amount: 0,
+        amount: 0,
+        cgst_percent: 0,
+        ut_sgst_percent: 0,
+        igst_percent: 0,
+        cgst_amount: 0,
+        ut_sgst_amount: 0,
+        igst_amount: 0,
+        total_amount: 0,
       }));
     }
   }
@@ -2180,6 +2576,12 @@ const toggleSelectAll = (rows) => {
       material_name: "",
       unit: prev.type === "product" ? "num" : "",
       hsn_code: "",
+      zach_code: "",
+      po_batch_no: "",
+      ls: "",
+      sach_code: "",
+      bin: "",
+      boxes: "",
       rate: "",
       basic_value: 0,
       discount_percent: 0,
@@ -2207,25 +2609,56 @@ const toggleSelectAll = (rows) => {
   function handleAddMoreDailyInput() {
     setPageError("");
     const supplierType = formValues.supplier_type || "supplier";
-    const rawMaterialType = formValues.raw_material_type || (formValues.type === "other" ? "other" : "raw_material");
-    const typeVal = supplierType === "general"
-      ? (rawMaterialType === "other" ? "other" : "raw_material")
-      : (rawMaterialType === "other" ? "other" : (formValues.type || formType || "raw_material"));
+    const rawMaterialType = formValues.raw_material_type || (formValues.type === "other" ? "other" : (formValues.type === "product" ? "product" : "raw_material"));
+    const typeVal = rawMaterialType === "product" || formValues.type === "product" || formValues.type === "element"
+      ? "product"
+      : (rawMaterialType === "other" || formValues.type === "other" ? "other" : "raw_material");
     let itemName = "";
     let rmId = null;
     let prdId = null;
 
-    if (supplierType === "general") {
-      itemName = String(formValues.material_name || formValues.item || "").trim();
-      if (!itemName) {
-        setPageError(
-          rawMaterialType === "other"
-            ? "Please enter a raw material name."
-            : "Please search and select a raw material from the list."
+    if (typeVal === "product") {
+      prdId = formValues.product_id ? Number(formValues.product_id) : (formValues.element_id ? Number(formValues.element_id) : null);
+      const matchedPrd = (lookupOptions.products || []).find((p) => Number(p.id) === prdId);
+      itemName = matchedPrd?.name || formValues.item || formValues.material_name || "";
+      if (!prdId && itemName) {
+        const found = (lookupOptions.products || []).find(
+          (p) => String(p.name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
         );
+        if (found) {
+          prdId = found.id;
+          itemName = found.name;
+        }
+      }
+      if (!prdId || !itemName) {
+        setPageError("Please click and select a specific product from the list first.");
         return;
       }
-      // In general mode, do not link or save to raw_material table
+    } else if (supplierType === "general") {
+      if (rawMaterialType === "other") {
+        itemName = String(formValues.material_name || formValues.item || "").trim();
+        if (!itemName) {
+          setPageError("Please enter a raw material name.");
+          return;
+        }
+      } else {
+        rmId = formValues.raw_material_id ? Number(formValues.raw_material_id) : null;
+        const matchedRm = (lookupOptions.rawMaterials || []).find((m) => Number(m.id) === rmId);
+        itemName = matchedRm?.material_name || formValues.item || formValues.material_name || "";
+        if (!rmId && itemName) {
+          const found = (lookupOptions.rawMaterials || []).find(
+            (m) => String(m.material_name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
+          );
+          if (found) {
+            rmId = found.id;
+            itemName = found.material_name;
+          }
+        }
+        if (!itemName) {
+          setPageError("Please search and select a raw material from the list.");
+          return;
+        }
+      }
       rmId = null;
     } else if (rawMaterialType === "other" || typeVal === "other") {
       itemName = String(formValues.material_name || formValues.item || "").trim();
@@ -2251,23 +2684,6 @@ const toggleSelectAll = (rows) => {
         setPageError("Please click and select a specific raw material from the list first.");
         return;
       }
-    } else if (typeVal === "product" || typeVal === "element") {
-      prdId = formValues.product_id ? Number(formValues.product_id) : null;
-      const matchedPrd = (lookupOptions.products || []).find((p) => Number(p.id) === prdId);
-      itemName = matchedPrd?.name || formValues.item || "";
-      if (!prdId && itemName) {
-        const found = (lookupOptions.products || []).find(
-          (p) => String(p.name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
-        );
-        if (found) {
-          prdId = found.id;
-          itemName = found.name;
-        }
-      }
-      if (!prdId || !itemName) {
-        setPageError("Please click and select a specific product from the list first.");
-        return;
-      }
     } else {
       itemName = String(formValues.material_name || formValues.item || "").trim();
       if (!itemName) {
@@ -2282,20 +2698,23 @@ const toggleSelectAll = (rows) => {
       return;
     }
 
-    const rate = Number(formValues.rate) || 0;
-    const basicValue = Number((qty * rate).toFixed(2));
-    const discountPercent = Number(formValues.discount_percent) || 0;
-    const discountAmount = formValues.discount_amount !== undefined && formValues.discount_amount !== ""
+    const isProductItem = typeVal === "product" || rawMaterialType === "product";
+    const rate = isProductItem ? 0 : (Number(formValues.rate) || 0);
+    const basicValue = isProductItem ? 0 : Number((qty * rate).toFixed(2));
+    const discountPercent = isProductItem ? 0 : (Number(formValues.discount_percent) || 0);
+    const discountAmount = isProductItem ? 0 : (formValues.discount_amount !== undefined && formValues.discount_amount !== ""
       ? Number(formValues.discount_amount)
-      : Number(((basicValue * discountPercent) / 100).toFixed(2));
-    const taxableValue = Number((basicValue - discountAmount).toFixed(2));
-    const cgstPercent = Number(formValues.cgst_percent) || 0;
-    const sgstPercent = Number(formValues.ut_sgst_percent) || 0;
-    const igstPercent = Number(formValues.igst_percent) || 0;
-    const cgstAmount = Number(((taxableValue * cgstPercent) / 100).toFixed(2));
-    const sgstAmount = Number(((taxableValue * sgstPercent) / 100).toFixed(2));
-    const igstAmount = Number(((taxableValue * igstPercent) / 100).toFixed(2));
-    const invoiceValue = Number((taxableValue + cgstAmount + sgstAmount + igstAmount).toFixed(2));
+      : Number(((basicValue * discountPercent) / 100).toFixed(2)));
+    const taxableValue = isProductItem ? 0 : Number((basicValue - discountAmount).toFixed(2));
+    const cgstPercent = isProductItem ? 0 : (Number(formValues.cgst_percent) || 0);
+    const sgstPercent = isProductItem ? 0 : (Number(formValues.ut_sgst_percent) || 0);
+    const igstPercent = isProductItem ? 0 : (Number(formValues.igst_percent) || 0);
+    const cgstAmount = isProductItem ? 0 : Number(((taxableValue * cgstPercent) / 100).toFixed(2));
+    const sgstAmount = isProductItem ? 0 : Number(((taxableValue * sgstPercent) / 100).toFixed(2));
+    const igstAmount = isProductItem ? 0 : Number(((taxableValue * igstPercent) / 100).toFixed(2));
+    const invoiceValue = isProductItem
+      ? (formValues.total_amount !== undefined && formValues.total_amount !== "" ? Number(formValues.total_amount) : 0)
+      : Number((taxableValue + cgstAmount + sgstAmount + igstAmount).toFixed(2));
 
     const newRow = {
       _tempId: Date.now() + Math.random(),
@@ -2321,6 +2740,12 @@ const toggleSelectAll = (rows) => {
       igst_amount: igstAmount,
       total_amount: invoiceValue,
       hsn_code: formValues.hsn_code || "",
+      zach_code: formValues.zach_code || "",
+      po_batch_no: formValues.po_batch_no || "",
+      ls: formValues.ls || "",
+      sach_code: formValues.sach_code || "",
+      bin: formValues.bin || "",
+      boxes: formValues.boxes || "",
       remarks: formValues.remarks || "",
       supplier_company_name: formValues.supplier_company_name || "",
       supplier_contact_person: formValues.supplier_contact_person || "",
@@ -2335,6 +2760,13 @@ const toggleSelectAll = (rows) => {
         material_name: itemName,
         supplier_type: "general",
         raw_material_type: rawMaterialType,
+        hsn_code: formValues.hsn_code || "",
+        zach_code: formValues.zach_code || "",
+        po_batch_no: formValues.po_batch_no || "",
+        ls: formValues.ls || "",
+        sach_code: formValues.sach_code || "",
+        bin: formValues.bin || "",
+        boxes: formValues.boxes || "",
         supplier_company_name: formValues.supplier_company_name || "",
         supplier_contact_person: formValues.supplier_contact_person || "",
         supplier_phone: formValues.supplier_phone || "",
@@ -2362,6 +2794,13 @@ const toggleSelectAll = (rows) => {
       element_id: "",
       item: "",
       material_name: "",
+      hsn_code: "",
+      zach_code: "",
+      po_batch_no: "",
+      ls: "",
+      sach_code: "",
+      bin: "",
+      boxes: "",
       quantity: "",
       rate: "",
       basic_value: "",
@@ -2390,7 +2829,7 @@ const toggleSelectAll = (rows) => {
     setFormValues((prev) => ({
       ...prev,
       supplier_type: itemToEdit.supplier_type || "supplier",
-      raw_material_type: itemToEdit.raw_material_type || (itemToEdit.type === "other" || !itemToEdit.raw_material_id ? "other" : "raw_material"),
+      raw_material_type: itemToEdit.raw_material_type || (itemToEdit.type === "product" || itemToEdit.type === "element" ? "product" : (itemToEdit.type === "other" || !itemToEdit.raw_material_id ? "other" : "raw_material")),
       type: itemToEdit.type || "raw_material",
       raw_material_id: itemToEdit.raw_material_id || "",
       product_id: itemToEdit.product_id || "",
@@ -2412,6 +2851,12 @@ const toggleSelectAll = (rows) => {
       igst_amount: itemToEdit.igst_amount ?? "",
       total_amount: itemToEdit.total_amount ?? "",
       hsn_code: itemToEdit.hsn_code || "",
+      zach_code: itemToEdit.zach_code || "",
+      po_batch_no: itemToEdit.po_batch_no || "",
+      ls: itemToEdit.ls || "",
+      sach_code: itemToEdit.sach_code || "",
+      bin: itemToEdit.bin || "",
+      boxes: itemToEdit.boxes || "",
       remarks: itemToEdit.remarks || "",
       supplier_company_name: itemToEdit.supplier_company_name || "",
       supplier_contact_person: itemToEdit.supplier_contact_person || "",
@@ -2458,6 +2903,94 @@ function populateRawMaterialFields(record) {
   };
 }
 
+function calculateCostDataBasicAutofill(data, changedField) {
+  const currentType = data.type || "Basic";
+  if (currentType !== "Basic") return data;
+
+  const parseVal = (v) => {
+    if (v === "" || v === null || v === undefined) return null;
+    const num = parseFloat(v);
+    return isNaN(num) ? null : num;
+  };
+
+  const next = { ...data };
+
+  const filmWidth = parseVal(next.mpp_film_width);
+  const freeMargin = parseVal(next.film_free_margin) ?? 0;
+  const stagger = parseVal(next.winding_stagger) ?? 0;
+  const basicVal = parseVal(next.wound_cap_basic_value);
+  const filmThickness = parseVal(next.mpp_film_thickness);
+  const coreOd = parseVal(next.core_od) ?? 0;
+
+  // 1. Active width in mm = MPP film width - (2 * film free margin + winding stagger)
+  if (changedField !== "active_width" || next.active_width === "" || next.active_width === null || next.active_width === undefined) {
+    if (filmWidth !== null && filmWidth > 0) {
+      const calcActiveWidth = filmWidth - (2 * freeMargin + stagger);
+      next.active_width = calcActiveWidth > 0 ? Number(calcActiveWidth.toFixed(2)) : 0;
+    } else if (changedField === "mpp_film_width") {
+      next.active_width = "";
+    }
+  }
+
+  const activeWidth = parseVal(next.active_width);
+
+  // 2. Band length Mtrs = ((wound cap basic value * mpp film thickness * 10000) / (3.845 * active width in mm)) / 100
+  if (changedField !== "band_length" || next.band_length === "" || next.band_length === null || next.band_length === undefined) {
+    if (basicVal !== null && basicVal > 0 && filmThickness !== null && filmThickness > 0 && activeWidth !== null && activeWidth > 0) {
+      const calcBandLength = ((basicVal * filmThickness * 10000) / (3.845 * activeWidth)) / 100;
+      next.band_length = Number(calcBandLength.toFixed(2));
+    } else if (["wound_cap_basic_value", "mpp_film_thickness", "mpp_film_width", "film_free_margin", "winding_stagger", "active_width"].includes(changedField)) {
+      if (!basicVal || !filmThickness || !activeWidth) {
+        next.band_length = "";
+      }
+    }
+  }
+
+  const bandLength = parseVal(next.band_length);
+
+  // 3. Wound capacitor OD = (sqrt(band length mtrs * 100 * 2 * MPP film thickness) / (25 * (22 / 7))) + (Core OD + core OD)
+  if (changedField !== "wound_capacitor_od" || next.wound_capacitor_od === "" || next.wound_capacitor_od === null || next.wound_capacitor_od === undefined) {
+    if (bandLength !== null && bandLength > 0 && filmThickness !== null && filmThickness > 0) {
+      const sqrtTerm = Math.sqrt(bandLength * 100 * 2 * filmThickness);
+      const piTerm = 25 * (22 / 7);
+      const calcOd = (sqrtTerm / piTerm) + (coreOd + coreOd);
+      next.wound_capacitor_od = Number(calcOd.toFixed(2));
+    } else if (["band_length", "wound_cap_basic_value", "mpp_film_thickness", "mpp_film_width", "core_od", "active_width"].includes(changedField)) {
+      if (!bandLength || !filmThickness) {
+        next.wound_capacitor_od = "";
+      }
+    }
+  }
+
+  const woundCapOd = parseVal(next.wound_capacitor_od);
+
+  // 4. Turns to be wound = (250 * (wound capacitor OD - core OD)) / MPP film thickness
+  if (changedField !== "turns_to_be_wound" || next.turns_to_be_wound === "" || next.turns_to_be_wound === null || next.turns_to_be_wound === undefined) {
+    if (woundCapOd !== null && woundCapOd > 0 && filmThickness !== null && filmThickness > 0) {
+      const calcTurns = (250 * (woundCapOd - coreOd)) / filmThickness;
+      next.turns_to_be_wound = Number(calcTurns.toFixed(2));
+    } else if (["wound_capacitor_od", "band_length", "wound_cap_basic_value", "mpp_film_thickness", "core_od", "mpp_film_width", "active_width"].includes(changedField)) {
+      if (!woundCapOd || !filmThickness) {
+        next.turns_to_be_wound = "";
+      }
+    }
+  }
+
+  // 5. Wt of capacitor gms = (2 * band length mtrs * MPP film width in mm * MPP film thickness in mm * 0.9) / 1000
+  if (changedField !== "wt_of_capacitor" || next.wt_of_capacitor === "" || next.wt_of_capacitor === null || next.wt_of_capacitor === undefined) {
+    if (bandLength !== null && bandLength > 0 && filmWidth !== null && filmWidth > 0 && filmThickness !== null && filmThickness > 0) {
+      const calcWt = (2 * bandLength * filmWidth * filmThickness * 0.9) / 1000;
+      next.wt_of_capacitor = Number(calcWt.toFixed(2));
+    } else if (["band_length", "mpp_film_width", "mpp_film_thickness", "wound_cap_basic_value", "active_width"].includes(changedField)) {
+      if (!bandLength || !filmWidth || !filmThickness) {
+        next.wt_of_capacitor = "";
+      }
+    }
+  }
+
+  return next;
+}
+
 function handleFormFieldChange(name, value) {
   setFormValues((current) => {
     const next = { ...current, [name]: value };
@@ -2487,6 +3020,8 @@ function handleFormFieldChange(name, value) {
           next.element_id = "";
           next.welded_element_id = "";
         }
+      } else if (activeSection === "dailyDispatch") {
+        setDailyDispatchType(value);
       } else {
         if (value === "raw_material") {
           next.product_id = "";
@@ -2515,6 +3050,12 @@ function handleFormFieldChange(name, value) {
         next.element_id = "";
         next.welded_element_id = "";
       } else if (value === "without_zach_code") {
+        next.zach_code = "";
+      }
+    }
+
+    if (name === "zach_mode") {
+      if (value === "without_zach_code") {
         next.zach_code = "";
       }
     }
@@ -2554,8 +3095,25 @@ function handleFormFieldChange(name, value) {
         next.raw_material_id = "";
         next.product_id = "";
         next.element_id = "";
+      } else if (value === "product") {
+        next.type = "product";
+        next.raw_material_id = "";
+        next.rate = "";
+        next.basic_value = 0;
+        next.discount_percent = 0;
+        next.discount_amount = 0;
+        next.amount = 0;
+        next.cgst_percent = 0;
+        next.ut_sgst_percent = 0;
+        next.igst_percent = 0;
+        next.cgst_amount = 0;
+        next.ut_sgst_amount = 0;
+        next.igst_amount = 0;
+        next.total_amount = 0;
       } else {
         next.type = "raw_material";
+        next.product_id = "";
+        next.element_id = "";
       }
     }
 
@@ -2756,6 +3314,40 @@ function handleFormFieldChange(name, value) {
       );
     }
 
+    if (activeSection === "dailyInputs" && (next.type === "product" || next.raw_material_type === "product" || next.type === "element")) {
+      next.rate = "";
+      next.basic_value = 0;
+      next.discount_percent = 0;
+      next.discount_amount = 0;
+      next.amount = 0;
+      next.cgst_percent = 0;
+      next.ut_sgst_percent = 0;
+      next.igst_percent = 0;
+      next.cgst_amount = 0;
+      next.ut_sgst_amount = 0;
+      next.igst_amount = 0;
+    }
+
+    if (activeSection === "costData") {
+      const costFields = [
+        "type",
+        "wound_cap_basic_value",
+        "mpp_film_width",
+        "mpp_film_thickness",
+        "core_od",
+        "film_free_margin",
+        "winding_stagger",
+        "active_width",
+        "band_length",
+        "wound_capacitor_od",
+        "turns_to_be_wound",
+        "wt_of_capacitor",
+      ];
+      if (costFields.includes(name)) {
+        return calculateCostDataBasicAutofill(next, name);
+      }
+    }
+
     return next;
   });
 }
@@ -2769,8 +3361,12 @@ function handleFormFieldChange(name, value) {
         ? []
         : (field.defaultValue ?? "");
     }
+    if (activeSection === "rawMaterials") {
+      emptyValues.zach_mode = "without_zach_code";
+      emptyValues.zach_code = "";
+    }
     if (activeSection === "products") {
-      emptyValues.product_mode = "without_zach_code";
+      emptyValues.product_mode = "with_zach_code";
       emptyValues.zach_code = "";
       emptyValues.raw_materials = [];
       emptyValues.raw_material_ids = [];
@@ -2784,7 +3380,7 @@ function handleFormFieldChange(name, value) {
       setStagedDailyInputs([]);
     }
     setFormValues(emptyValues);
-    setFormType(activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : "");
+    setFormType(activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : activeSection === "dailyDispatch" ? "Job work" : "");
     setPageError("");
     setNotice("");
     setProductSaveConfirm(null);
@@ -2798,7 +3394,10 @@ function handleFormFieldChange(name, value) {
     setFormValues({});
     setStagedDailyInputs([]);
     setProductSaveConfirm(null);
-    setFormType(section === "costData" ? "Basic" : section === "products" ? "element" : "raw_material");
+    setFormType(section === "costData" ? "Basic" : section === "products" ? "element" : section === "dailyDispatch" ? "Job work" : "raw_material");
+    if (section === "dailyDispatch") {
+      setDailyDispatchType("Job work");
+    }
     setSearchTerm("");
     setFilters([]);
     setFilterField("");
@@ -2903,6 +3502,8 @@ function handleFormFieldChange(name, value) {
   useEffect(() => {
     const lookups = activeSection === "dailyInputs"
       ? ["suppliers", "rawMaterials", "products"]
+      : activeSection === "dailyDispatch"
+      ? ["dailyInputs", "products", "suppliers", "customers"]
       : activeSection === "products"
       ? ["rawMaterials", "products"]
       : [];
@@ -2990,6 +3591,10 @@ async function submitForm(isAddMore = false) {
     // --------------------------------------------------
     const numericFields = [
       "quantity",
+      "out_quantity",
+      "ok",
+      "reject",
+      "daily_input_id",
       "supplier_id",
       "customer_id",
       "raw_material_id",
@@ -3079,7 +3684,42 @@ async function submitForm(isAddMore = false) {
     ).map((field) => field.name);
     const sectionAllowedFields = new Set([
       ...sectionFields,
-      ...(activeSection === "products" ? ["zach_code", "has_zach_code", "raw_material_id", "raw_material_ids", "raw_materials", "element_id", "welded_element_id"] : []),
+      ...(activeSection === "rawMaterials" ? ["zach_code", "has_zach_code", "details"] : []),
+      ...(activeSection === "products" ? ["zach_code", "has_zach_code", "po_batch_no", "ls", "hsn_code", "sach_code", "bin", "boxes", "raw_material_id", "raw_material_ids", "raw_materials", "element_id", "welded_element_id"] : []),
+      ...(activeSection === "dailyDispatch"
+        ? [
+            "type",
+            "daily_input_id",
+            "product_id",
+            "supplier_id",
+            "customer_id",
+            "dc_no",
+            "dc_date",
+            "DC_no",
+            "DC_date",
+            "bill_no",
+            "bill_date",
+            "item",
+            "zach_code",
+            "po_batch_no",
+            "sach_code",
+            "ls",
+            "quantity",
+            "bin",
+            "boxes",
+            "unit",
+            "hsn_code",
+            "total_amount",
+            "remarks",
+            "out_dc_no",
+            "out_dc_date",
+            "out_quantity",
+            "ok",
+            "reject",
+            "other_details",
+            "user_id",
+          ]
+        : []),
       ...(activeSection === "dailyInputs"
         ? [
             "type",
@@ -3114,6 +3754,12 @@ async function submitForm(isAddMore = false) {
             "remarks",
             "material_name",
             "hsn_code",
+            "zach_code",
+            "po_batch_no",
+            "ls",
+            "sach_code",
+            "bin",
+            "boxes",
             "supplier_company_name",
             "supplier_contact_person",
             "supplier_email",
@@ -3133,6 +3779,34 @@ async function submitForm(isAddMore = false) {
     }
 
     // --------------------------------------------------
+    // Prepare Raw Materials payload
+    // --------------------------------------------------
+    if (activeSection === "rawMaterials") {
+      delete record.zach_mode;
+      const isWithZach =
+        formValues.zach_mode === "with_zach_code" ||
+        (!formValues.zach_mode && (editingRecord?.has_zach_code || Boolean(editingRecord?.zach_code)));
+
+      if (isWithZach) {
+        const zachCodeVal = (formValues.zach_code ?? (editingRecord ? editingRecord.zach_code : "") ?? "").trim();
+        if (!zachCodeVal) {
+          setPageError("Zach No is required when 'zach no' is selected.");
+          setIsSaving(false);
+          return;
+        }
+        record.has_zach_code = true;
+        record.zach_code = zachCodeVal;
+      } else {
+        record.has_zach_code = false;
+        record.zach_code = null;
+      }
+
+      record.details = formValues.details !== undefined
+        ? (formValues.details ? String(formValues.details).trim() : null)
+        : (editingRecord?.details ?? null);
+    }
+
+    // --------------------------------------------------
     // Prepare Products payload
     // --------------------------------------------------
     if (activeSection === "products") {
@@ -3145,15 +3819,18 @@ async function submitForm(isAddMore = false) {
         : formValues.type || (editingRecord ? editingRecord.type : "element");
       record.type = typeVal;
 
+      record.ls = formValues.ls !== undefined
+        ? (formValues.ls ? String(formValues.ls).trim() : null)
+        : (editingRecord?.ls ?? null);
+      record.hsn_code = formValues.hsn_code !== undefined
+        ? (formValues.hsn_code ? String(formValues.hsn_code).trim() : null)
+        : (editingRecord?.hsn_code ?? null);
+      record.sach_code = formValues.sach_code !== undefined
+        ? (formValues.sach_code ? String(formValues.sach_code).trim() : null)
+        : (editingRecord?.sach_code ?? null);
+
       if (isWithZach) {
-        const zachCodeVal = (formValues.zach_code ?? (editingRecord ? editingRecord.zach_code : "") ?? "").trim();
-        if (!zachCodeVal) {
-          setPageError("Zach Code is required when 'with zach code' is selected.");
-          setIsSaving(false);
-          return;
-        }
         record.has_zach_code = true;
-        record.zach_code = zachCodeVal;
         record.element_id = null;
         record.welded_element_id = null;
       } else {
@@ -3221,10 +3898,32 @@ async function submitForm(isAddMore = false) {
         record.wound_cap_element_value = null;
         record.pp_film_width = null;
         record.pp_film_thickness = null;
+
+        const calculated = calculateCostDataBasicAutofill(record, "submit");
+        record.active_width = calculated.active_width !== undefined && calculated.active_width !== "" ? calculated.active_width : null;
+        record.band_length = calculated.band_length !== undefined && calculated.band_length !== "" ? calculated.band_length : null;
+        record.wound_capacitor_od = calculated.wound_capacitor_od !== undefined && calculated.wound_capacitor_od !== "" ? calculated.wound_capacitor_od : null;
+        record.turns_to_be_wound = calculated.turns_to_be_wound !== undefined && calculated.turns_to_be_wound !== "" ? calculated.turns_to_be_wound : null;
+        record.wt_of_capacitor = calculated.wt_of_capacitor !== undefined && calculated.wt_of_capacitor !== "" ? calculated.wt_of_capacitor : null;
       } else if (typeVal === "Element") {
         record.wound_cap_basic_value = null;
         record.mpp_film_width = null;
         record.mpp_film_thickness = null;
+      }
+    }
+
+    if (activeSection === "dailyDispatch") {
+      record.type = formValues.type || dailyDispatchType || (editingRecord ? editingRecord.type : "Job work");
+      if (record.DC_no !== undefined) {
+        record.dc_no = record.DC_no;
+        delete record.DC_no;
+      }
+      if (record.DC_date !== undefined) {
+        record.dc_date = record.DC_date;
+        delete record.DC_date;
+      }
+      if ((record.user_id === undefined || record.user_id === null) && user?.id) {
+        record.user_id = Number(user.id);
       }
     }
 
@@ -3258,15 +3957,21 @@ async function submitForm(isAddMore = false) {
       );
 
       if (hasActiveItem) {
-        const curRmType = formValues.raw_material_type || (formValues.type === "other" ? "other" : "raw_material");
-        const curType = supplierType === "general"
-          ? (curRmType === "other" ? "other" : "raw_material")
-          : (curRmType === "other" ? "other" : (formValues.type || formType || "raw_material"));
+        const curRmType = formValues.raw_material_type || (formValues.type === "other" ? "other" : (formValues.type === "product" ? "product" : "raw_material"));
+        const curType = curRmType === "product" || formValues.type === "product" || formValues.type === "element"
+          ? "product"
+          : supplierType === "general"
+            ? (curRmType === "other" ? "other" : "raw_material")
+            : (curRmType === "other" ? "other" : (formValues.type || formType || "raw_material"));
         let curItemName = formValues.material_name || formValues.item || "";
         let curRmId = formValues.raw_material_id ? Number(formValues.raw_material_id) : null;
-        let curPrdId = formValues.product_id ? Number(formValues.product_id) : null;
+        let curPrdId = formValues.product_id ? Number(formValues.product_id) : (formValues.element_id ? Number(formValues.element_id) : null);
 
-        if (supplierType === "general") {
+        if ((curType === "product" || curType === "element") && curPrdId) {
+          const p = (lookupOptions.products || []).find((prd) => Number(prd.id) === curPrdId);
+          if (p) curItemName = p.name;
+          curRmId = null;
+        } else if (supplierType === "general") {
           curItemName = String(formValues.material_name || formValues.item || "").trim();
           curRmId = null;
         } else if (curRmType === "other" || curType === "other") {
@@ -3275,34 +3980,34 @@ async function submitForm(isAddMore = false) {
         } else if (curType === "raw_material" && curRmId) {
           const m = (lookupOptions.rawMaterials || []).find((rm) => Number(rm.id) === curRmId);
           if (m) curItemName = m.material_name;
-        } else if ((curType === "product" || curType === "element") && curPrdId) {
-          const p = (lookupOptions.products || []).find((prd) => Number(prd.id) === curPrdId);
-          if (p) curItemName = p.name;
         } else if (isOther) {
           curItemName = formValues.material_name || formValues.item || "";
         }
 
+        const isProductItem = curType === "product" || curType === "element" || curRmType === "product";
         const curQty = Number(formValues.quantity);
-        const curRate = Number(formValues.rate) || 0;
-        const curBasic = Number((curQty * curRate).toFixed(2));
-        const curDiscPct = Number(formValues.discount_percent) || 0;
-        const curDiscAmt = formValues.discount_amount !== undefined && formValues.discount_amount !== ""
+        const curRate = isProductItem ? 0 : (Number(formValues.rate) || 0);
+        const curBasic = isProductItem ? 0 : Number((curQty * curRate).toFixed(2));
+        const curDiscPct = isProductItem ? 0 : (Number(formValues.discount_percent) || 0);
+        const curDiscAmt = isProductItem ? 0 : (formValues.discount_amount !== undefined && formValues.discount_amount !== ""
           ? Number(formValues.discount_amount)
-          : Number(((curBasic * curDiscPct) / 100).toFixed(2));
-        const curTaxable = Number((curBasic - curDiscAmt).toFixed(2));
-        const curCgstPct = Number(formValues.cgst_percent) || 0;
-        const curSgstPct = Number(formValues.ut_sgst_percent) || 0;
-        const curIgstPct = Number(formValues.igst_percent) || 0;
-        const curCgstAmt = Number(((curTaxable * curCgstPct) / 100).toFixed(2));
-        const curSgstAmt = Number(((curTaxable * curSgstPct) / 100).toFixed(2));
-        const curIgstAmt = Number(((curTaxable * curIgstPct) / 100).toFixed(2));
-        const curTotalAmt = Number((curTaxable + curCgstAmt + curSgstAmt + curIgstAmt).toFixed(2));
+          : Number(((curBasic * curDiscPct) / 100).toFixed(2)));
+        const curTaxable = isProductItem ? 0 : Number((curBasic - curDiscAmt).toFixed(2));
+        const curCgstPct = isProductItem ? 0 : (Number(formValues.cgst_percent) || 0);
+        const curSgstPct = isProductItem ? 0 : (Number(formValues.ut_sgst_percent) || 0);
+        const curIgstPct = isProductItem ? 0 : (Number(formValues.igst_percent) || 0);
+        const curCgstAmt = isProductItem ? 0 : Number(((curTaxable * curCgstPct) / 100).toFixed(2));
+        const curSgstAmt = isProductItem ? 0 : Number(((curTaxable * curSgstPct) / 100).toFixed(2));
+        const curIgstAmt = isProductItem ? 0 : Number(((curTaxable * curIgstPct) / 100).toFixed(2));
+        const curTotalAmt = isProductItem
+          ? (formValues.total_amount !== undefined && formValues.total_amount !== "" ? Number(formValues.total_amount) : 0)
+          : Number((curTaxable + curCgstAmt + curSgstAmt + curIgstAmt).toFixed(2));
 
         itemsToSave.push({
           item: curItemName,
           supplier_type: supplierType,
-          type: curType,
-          raw_material_type: curRmType,
+          type: isProductItem ? "product" : curType,
+          raw_material_type: isProductItem ? "product" : curRmType,
           raw_material_id: curRmId,
           product_id: curPrdId,
           element_id: curPrdId,
@@ -3321,6 +4026,12 @@ async function submitForm(isAddMore = false) {
           igst_amount: curIgstAmt,
           total_amount: curTotalAmt,
           hsn_code: formValues.hsn_code || "",
+          zach_code: formValues.zach_code || "",
+          po_batch_no: formValues.po_batch_no || "",
+          ls: formValues.ls || "",
+          sach_code: formValues.sach_code || "",
+          bin: formValues.bin || "",
+          boxes: formValues.boxes || "",
           remarks: formValues.remarks || "",
           supplier_company_name: formValues.supplier_company_name || "",
           supplier_contact_person: formValues.supplier_contact_person || "",
@@ -3347,6 +4058,13 @@ async function submitForm(isAddMore = false) {
             cgst_percent: curCgstPct,
             ut_sgst_percent: curSgstPct,
             igst_percent: curIgstPct,
+            hsn_code: formValues.hsn_code || "",
+            zach_code: formValues.zach_code || "",
+            po_batch_no: formValues.po_batch_no || "",
+            ls: formValues.ls || "",
+            sach_code: formValues.sach_code || "",
+            bin: formValues.bin || "",
+            boxes: formValues.boxes || "",
           } : null),
         });
       }
@@ -3354,8 +4072,8 @@ async function submitForm(isAddMore = false) {
       if (itemsToSave.length === 0) {
         setPageError(
           supplierType === "general"
-            ? "Please enter or select a Raw Material and a valid Quantity before saving."
-            : "Please add at least one raw material with a valid quantity before saving."
+            ? "Please enter or select an item and a valid quantity before saving."
+            : "Please add at least one item with a valid quantity before saving."
         );
         setIsSaving(false);
         return;
@@ -3388,6 +4106,7 @@ async function submitForm(isAddMore = false) {
       for (let i = 0; i < itemsToSave.length; i++) {
         const item = itemsToSave[i];
         const itemSupplierType = item.supplier_type || supplierType;
+        const isProdPayload = item.type === "product" || item.type === "element" || item.raw_material_type === "product";
         const payload = {
           ...commonHeader,
           supplier_type: itemSupplierType,
@@ -3408,19 +4127,25 @@ async function submitForm(isAddMore = false) {
           item: item.item,
           quantity: item.quantity,
           unit: item.unit || null,
-          rate: item.rate !== undefined && item.rate !== null && item.rate !== "" ? Number(item.rate) : 0,
-          basic_value: item.basic_value !== undefined && item.basic_value !== null ? Number(item.basic_value) : 0,
-          discount_percent: item.discount_percent !== undefined && item.discount_percent !== null ? Number(item.discount_percent) : 0,
-          discount_amount: item.discount_amount !== undefined && item.discount_amount !== null ? Number(item.discount_amount) : 0,
-          cgst_percent: item.cgst_percent !== undefined && item.cgst_percent !== null ? Number(item.cgst_percent) : 0,
-          ut_sgst_percent: item.ut_sgst_percent !== undefined && item.ut_sgst_percent !== null ? Number(item.ut_sgst_percent) : 0,
-          igst_percent: item.igst_percent !== undefined && item.igst_percent !== null ? Number(item.igst_percent) : 0,
-          amount: item.amount !== undefined && item.amount !== null ? Number(item.amount) : 0,
-          cgst_amount: item.cgst_amount !== undefined && item.cgst_amount !== null ? Number(item.cgst_amount) : 0,
-          ut_sgst_amount: item.ut_sgst_amount !== undefined && item.ut_sgst_amount !== null ? Number(item.ut_sgst_amount) : 0,
-          igst_amount: item.igst_amount !== undefined && item.igst_amount !== null ? Number(item.igst_amount) : 0,
-          total_amount: item.total_amount !== undefined && item.total_amount !== null ? Number(item.total_amount) : 0,
+          rate: isProdPayload ? 0 : (item.rate !== undefined && item.rate !== null && item.rate !== "" ? Number(item.rate) : 0),
+          basic_value: isProdPayload ? 0 : (item.basic_value !== undefined && item.basic_value !== null ? Number(item.basic_value) : 0),
+          discount_percent: isProdPayload ? 0 : (item.discount_percent !== undefined && item.discount_percent !== null ? Number(item.discount_percent) : 0),
+          discount_amount: isProdPayload ? 0 : (item.discount_amount !== undefined && item.discount_amount !== null ? Number(item.discount_amount) : 0),
+          cgst_percent: isProdPayload ? 0 : (item.cgst_percent !== undefined && item.cgst_percent !== null ? Number(item.cgst_percent) : 0),
+          ut_sgst_percent: isProdPayload ? 0 : (item.ut_sgst_percent !== undefined && item.ut_sgst_percent !== null ? Number(item.ut_sgst_percent) : 0),
+          igst_percent: isProdPayload ? 0 : (item.igst_percent !== undefined && item.igst_percent !== null ? Number(item.igst_percent) : 0),
+          amount: isProdPayload ? 0 : (item.amount !== undefined && item.amount !== null ? Number(item.amount) : 0),
+          cgst_amount: isProdPayload ? 0 : (item.cgst_amount !== undefined && item.cgst_amount !== null ? Number(item.cgst_amount) : 0),
+          ut_sgst_amount: isProdPayload ? 0 : (item.ut_sgst_amount !== undefined && item.ut_sgst_amount !== null ? Number(item.ut_sgst_amount) : 0),
+          igst_amount: isProdPayload ? 0 : (item.igst_amount !== undefined && item.igst_amount !== null ? Number(item.igst_amount) : 0),
+          total_amount: item.total_amount !== undefined && item.total_amount !== null && item.total_amount !== "" ? Number(item.total_amount) : 0,
           hsn_code: item.hsn_code || null,
+          zach_code: item.zach_code || null,
+          po_batch_no: item.po_batch_no || null,
+          ls: item.ls || null,
+          sach_code: item.sach_code || null,
+          bin: item.bin || null,
+          boxes: item.boxes || null,
           remarks: item.remarks || null,
           other_details: item.other_details || (itemSupplierType === "general" ? {
             material_name: item.item,
@@ -3437,6 +4162,13 @@ async function submitForm(isAddMore = false) {
             cgst_percent: item.cgst_percent,
             ut_sgst_percent: item.ut_sgst_percent,
             igst_percent: item.igst_percent,
+            hsn_code: item.hsn_code || null,
+            zach_code: item.zach_code || null,
+            po_batch_no: item.po_batch_no || null,
+            ls: item.ls || null,
+            sach_code: item.sach_code || null,
+            bin: item.bin || null,
+            boxes: item.boxes || null,
           } : isOther ? {
             material_name: item.item,
             supplier_company_name: formValues.supplier_company_name,
@@ -3488,14 +4220,24 @@ async function submitForm(isAddMore = false) {
       if (supplierType === "general") {
         record.supplier_id = null;
         record.raw_material_id = null;
+        const isProdGeneral = formValues.raw_material_type === "product" || formValues.type === "product" || formValues.type === "element";
+        if (isProdGeneral) {
+          let prdId = formValues.product_id || formValues.element_id || editingRecord?.product_id || editingRecord?.element_id || null;
+          record.type = "product";
+          record.product_id = prdId ? Number(prdId) : null;
+          record.element_id = prdId ? Number(prdId) : null;
+        } else {
+          record.type = "raw_material";
+          record.product_id = null;
+          record.element_id = null;
+        }
         const itemName = formValues.material_name || formValues.item || (editingRecord ? editingRecord.item : "");
         if (!itemName || !String(itemName).trim()) {
-          setPageError("Material name is required.");
+          setPageError(isProdGeneral ? "Product name is required." : "Material name is required.");
           setIsSaving(false);
           return;
         }
         record.item = String(itemName).trim();
-        record.type = "raw_material";
         if (formValues.unit === "other" && formValues.unit_other) {
           record.unit = formValues.unit_other;
         }
@@ -3525,6 +4267,13 @@ async function submitForm(isAddMore = false) {
           cgst_percent: record.cgst_percent,
           ut_sgst_percent: record.ut_sgst_percent,
           igst_percent: record.igst_percent,
+          hsn_code: record.hsn_code,
+          zach_code: record.zach_code,
+          po_batch_no: record.po_batch_no,
+          ls: record.ls,
+          sach_code: record.sach_code,
+          bin: record.bin,
+          boxes: record.boxes,
         };
       } else {
         const typeVal = formValues.type || (editingRecord ? editingRecord.type : null);
@@ -3731,6 +4480,12 @@ async function submitForm(isAddMore = false) {
         "supplier_pincode",
         "supplier_gst_number",
         "hsn_code",
+        "zach_code",
+        "po_batch_no",
+        "ls",
+        "sach_code",
+        "bin",
+        "boxes",
         "cgst_percent",
         "ut_sgst_percent",
         "igst_percent",
@@ -3753,6 +4508,21 @@ async function submitForm(isAddMore = false) {
         }
       }
       delete record.item_picker;
+
+      if (record.type === "product" || record.type === "element") {
+        record.rate = 0;
+        record.basic_value = 0;
+        record.discount_percent = 0;
+        record.discount_amount = 0;
+        record.amount = 0;
+        record.cgst_percent = 0;
+        record.ut_sgst_percent = 0;
+        record.igst_percent = 0;
+        record.cgst_amount = 0;
+        record.ut_sgst_amount = 0;
+        record.igst_amount = 0;
+        record.total_amount = 0;
+      }
 
       // Normalize field names for the API.
       if (record.DC_no !== undefined) {
@@ -4000,6 +4770,13 @@ async function submitForm(isAddMore = false) {
         element_id: "",
         material_name: "",
         hsn_code: "",
+        zach_code: "",
+        po_batch_no: "",
+        ls: "",
+        sach_code: "",
+        bin: "",
+        boxes: "",
+        remarks: "",
         supplier_company_name: prev.supplier_company_name ?? formValues.supplier_company_name ?? "",
         supplier_contact_person: prev.supplier_contact_person ?? formValues.supplier_contact_person ?? "",
         supplier_email: prev.supplier_email ?? formValues.supplier_email ?? "",
@@ -4193,6 +4970,21 @@ async function handleDeleteSelected() {
       const sgst = Number(record.ut_sgst_amount) || 0;
       const igst = Number(record.igst_amount) || 0;
       return Number((amt + cgst + sgst + igst).toFixed(2));
+    }
+    if (["hsn_code", "zach_code", "po_batch_no", "ls", "sach_code", "bin", "boxes"].includes(key)) {
+      const directVal = record[key] ?? record.other_details?.[key];
+      if (directVal !== undefined && directVal !== null && directVal !== "") {
+        return directVal;
+      }
+      const prdId = record.product_id || (record.type === "element" ? record.element_id : null);
+      if (prdId || record.type === "product" || record.type === "element") {
+        const matchedPrd = (lookupOptions.products || []).find(
+          (p) => (prdId && String(p.id) === String(prdId)) || String(p.name || "").trim().toLowerCase() === String(record.item || "").trim().toLowerCase()
+        );
+        if (matchedPrd && matchedPrd[key]) {
+          return matchedPrd[key];
+        }
+      }
     }
     return record[key];
   }
@@ -5099,6 +5891,8 @@ async function handleDeleteSelected() {
 
   const activeLookups = activeSection === "dailyInputs"
     ? ["suppliers", "rawMaterials", "products"]
+    : activeSection === "dailyDispatch"
+    ? ["dailyInputs", "products", "suppliers", "customers"]
     : activeSection === "products"
     ? ["rawMaterials", "products"]
     : [];
@@ -5156,13 +5950,13 @@ async function handleDeleteSelected() {
                         aria-hidden="true"
                         className={`nav-chevron-icon${isGroupOpen ? " open" : ""}`}
                         fill="none"
-                        height="20"
+                        height="16"
                         stroke="currentColor"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth="2.8"
+                        strokeWidth="2.4"
                         viewBox="0 0 24 24"
-                        width="20"
+                        width="16"
                       >
                         <polyline points="6 9 12 15 18 9" />
                       </svg>
@@ -5297,7 +6091,7 @@ async function handleDeleteSelected() {
                         } else {
                           setEditingRecord(null);
                           setProductSaveConfirm(null);
-                          const initialType = activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : activeSection === "dailyInputs" ? "raw_material" : "raw_material";
+                          const initialType = activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : activeSection === "dailyDispatch" ? (dailyDispatchType || "Job work") : activeSection === "dailyInputs" ? "raw_material" : "raw_material";
                           setFormType(initialType);
                           const initialValues = {};
                           const fields = sections[activeSection]?.fields || [];
@@ -5309,8 +6103,12 @@ async function handleDeleteSelected() {
                                 ? []
                                 : (field.defaultValue ?? "");
                           }
+                          if (activeSection === "rawMaterials") {
+                            initialValues.zach_mode = "without_zach_code";
+                            initialValues.zach_code = "";
+                          }
                           if (activeSection === "products") {
-                            initialValues.product_mode = "without_zach_code";
+                            initialValues.product_mode = "with_zach_code";
                             initialValues.zach_code = "";
                             initialValues.raw_materials = [];
                             initialValues.raw_material_ids = [];
@@ -5318,6 +6116,9 @@ async function handleDeleteSelected() {
                           if (activeSection === "dailyInputs") {
                             initialValues.supplier_type = "supplier";
                             setStagedDailyInputs([]);
+                          }
+                          if (activeSection === "dailyDispatch") {
+                            initialValues.type = dailyDispatchType || "Job work";
                           }
                           setFormValues(initialValues);
                           setIsFormOpen(true);
@@ -5333,6 +6134,454 @@ async function handleDeleteSelected() {
 
               {pageError && <p className="workspace-error" role="alert">{pageError}</p>}
               {notice && <p className="workspace-notice" role="status">{notice}</p>}
+
+              {activeSection === "dailyDispatch" && (
+                <div className="rm-type-selector-card" style={{ marginBottom: "16px" }}>
+                  <div className="rm-type-header">
+                    <div className="rm-type-label-wrap">
+                      <span className="rm-type-title">Select Dispatch Option:</span>
+                      <span className="rm-type-required">*</span>
+                    </div>
+                    <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Daily Dispatch Option">
+                      {["Job work", "Element", "Capacitor", "welded element"].map((opt) => {
+                        const isSelected = (isFormOpen ? (formValues.type || dailyDispatchType) : dailyDispatchType) === opt;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            role="radio"
+                            aria-checked={isSelected}
+                            className={`rm-type-pill-btn ${isSelected ? "active" : ""}`}
+                            onClick={() => {
+                              if (isSelected) {
+                                setDailyDispatchType("");
+                                setFormType("");
+                                if (isFormOpen) {
+                                  handleFormFieldChange("type", "");
+                                }
+                              } else {
+                                setDailyDispatchType(opt);
+                                setFormType(opt);
+                                if (isFormOpen) {
+                                  handleFormFieldChange("type", opt);
+                                }
+                              }
+                            }}
+                          >
+                            <span>{opt}</span>
+                            {isSelected && <span className="rm-type-check">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {((isFormOpen ? (formValues.type || dailyDispatchType) : dailyDispatchType) === "Job work") && (() => {
+                    const poDailyInputs = (lookupOptions.dailyInputs || []).filter((di) => {
+                      const poVal = di.po_batch_no ?? di.other_details?.po_batch_no ?? getRecordFieldValue(di, "po_batch_no") ?? "";
+                      const strPo = String(poVal).trim();
+                      return strPo !== "" && strPo !== "-" && strPo !== "—";
+                    });
+                    const isNonEmptyDisplayVal = (val) => {
+                      if (val === null || val === undefined) return false;
+                      const s = String(val).trim();
+                      return s !== "" && s !== "-" && s !== "—" && s.toLowerCase() !== "null";
+                    };
+                    const jobWorkColumns = [
+                      {
+                        key: "po_batch_no",
+                        label: "P.O. Number",
+                        bold: true,
+                        thStyle: { width: "16%", padding: "7px 10px" },
+                        tdStyle: { width: "16%", padding: "6px 10px" },
+                        getValue: (di) => di.po_batch_no ?? di.other_details?.po_batch_no ?? getRecordFieldValue(di, "po_batch_no"),
+                      },
+                      {
+                        key: "item",
+                        label: "Item",
+                        tdClassName: "staged-item-name",
+                        thStyle: { width: "28%", padding: "7px 10px" },
+                        tdStyle: { width: "28%", padding: "6px 10px" },
+                        getValue: (di) => di.item,
+                      },
+                      {
+                        key: "sach_code",
+                        label: "Sach",
+                        thStyle: { width: "15%", padding: "7px 10px" },
+                        tdStyle: { width: "15%", padding: "6px 10px" },
+                        getValue: (di) => di.sach_code ?? di.other_details?.sach_code ?? getRecordFieldValue(di, "sach_code"),
+                      },
+                      {
+                        key: "ls",
+                        label: "Ls",
+                        thStyle: { width: "8%", textAlign: "center", padding: "7px 8px" },
+                        tdStyle: { width: "8%", textAlign: "center", padding: "6px 8px" },
+                        getValue: (di) => di.ls ?? di.other_details?.ls ?? getRecordFieldValue(di, "ls"),
+                      },
+                      {
+                        key: "quantity",
+                        label: "Quantity",
+                        thClassName: "numeric-cell",
+                        tdClassName: "numeric-cell",
+                        thStyle: { width: "10%", textAlign: "right", padding: "7px 10px" },
+                        tdStyle: { width: "10%", textAlign: "right", padding: "6px 10px" },
+                        getValue: (di) => di.quantity,
+                      },
+                      {
+                        key: "bin",
+                        label: "Bin",
+                        thStyle: { width: "7%", textAlign: "center", padding: "7px 6px" },
+                        tdStyle: { width: "7%", textAlign: "center", padding: "6px 6px" },
+                        getValue: (di) => di.bin ?? di.other_details?.bin ?? getRecordFieldValue(di, "bin"),
+                      },
+                      {
+                        key: "boxes",
+                        label: "Boxes",
+                        thStyle: { width: "6%", textAlign: "center", padding: "7px 6px" },
+                        tdStyle: { width: "6%", textAlign: "center", padding: "6px 6px" },
+                        getValue: (di) => di.boxes ?? di.other_details?.boxes ?? getRecordFieldValue(di, "boxes"),
+                      },
+                    ];
+                    const visibleJobWorkCols = jobWorkColumns;
+                    return (
+                      <div className="staged-raw-materials-section" style={{ marginTop: "14px" }}>
+                        <div className="staged-raw-materials-header">
+                          <h3>Daily Inputs with P.O. Number ({poDailyInputs.length})</h3>
+                          <span className="staged-hint">
+                            Showing all Daily Inputs that have a P.O.No / Batch No. Click a row or "Select" to load (click again or "Deselect" to clear).
+                          </span>
+                        </div>
+                        <div className="staged-table-wrapper">
+                          <table className="staged-table">
+                            <thead>
+                              <tr>
+                                {visibleJobWorkCols.map((col) => (
+                                  <th key={col.key} className={col.thClassName} style={col.thStyle}>
+                                    {col.label}
+                                  </th>
+                                ))}
+                                <th style={{ width: "10%", textAlign: "center", padding: "7px 8px" }}>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lookupLoading.dailyInputs ? (
+                                <tr>
+                                  <td colSpan={visibleJobWorkCols.length + 1} style={{ textAlign: "center", padding: "16px", color: "#64748b" }}>
+                                    Loading daily inputs with P.O. number…
+                                  </td>
+                                </tr>
+                              ) : poDailyInputs.length === 0 ? (
+                                <tr>
+                                  <td colSpan={visibleJobWorkCols.length + 1} style={{ textAlign: "center", padding: "16px", color: "#64748b" }}>
+                                    No Daily Inputs with a P.O.No / Batch No found.
+                                  </td>
+                                </tr>
+                              ) : (
+                                poDailyInputs.map((di) => {
+                                  const poVal = di.po_batch_no ?? di.other_details?.po_batch_no ?? getRecordFieldValue(di, "po_batch_no") ?? "";
+                                  const zachVal = di.zach_code ?? di.other_details?.zach_code ?? getRecordFieldValue(di, "zach_code") ?? "";
+                                  const sachVal = di.sach_code ?? di.other_details?.sach_code ?? getRecordFieldValue(di, "sach_code") ?? "";
+                                  const lsVal = di.ls ?? di.other_details?.ls ?? getRecordFieldValue(di, "ls") ?? "";
+                                  const binVal = di.bin ?? di.other_details?.bin ?? getRecordFieldValue(di, "bin") ?? "";
+                                  const boxesVal = di.boxes ?? di.other_details?.boxes ?? getRecordFieldValue(di, "boxes") ?? "";
+                                  const hsnVal = di.hsn_code ?? di.other_details?.hsn_code ?? getRecordFieldValue(di, "hsn_code") ?? "";
+                                  const cleanVal = (v) => (isNonEmptyDisplayVal(v) ? v : "");
+                                  const isSelectedRow = stagedDailyDispatches.some(
+                                    (row) => String(row.daily_input_id) === String(di.id)
+                                  );
+                                  const handleSelectJobWorkRow = () => {
+                                    if (isSelectedRow) {
+                                      setStagedDailyDispatches((prev) =>
+                                        prev.filter((row) => String(row.daily_input_id) !== String(di.id))
+                                      );
+                                      setNotice(`Deselected Daily Input #${di.id} (P.O.No: ${poVal}).`);
+                                      return;
+                                    }
+                                    const newRow = {
+                                      type: "Job work",
+                                      daily_input_id: di.id,
+                                      product_id: di.product_id || di.element_id || null,
+                                      supplier_id: di.supplier_id || null,
+                                      DC_no: cleanVal(di.DC_no ?? di.dc_no),
+                                      DC_date: normalizeCsvDate(di.DC_date ?? di.dc_date),
+                                      bill_no: cleanVal(di.bill_no),
+                                      bill_date: normalizeCsvDate(di.bill_date),
+                                      item: cleanVal(di.item),
+                                      zach_code: cleanVal(zachVal),
+                                      po_batch_no: cleanVal(poVal),
+                                      sach_code: cleanVal(sachVal),
+                                      ls: cleanVal(lsVal),
+                                      quantity: di.quantity ?? "",
+                                      bin: cleanVal(binVal),
+                                      boxes: cleanVal(boxesVal),
+                                      unit: cleanVal(di.unit) || "num",
+                                      hsn_code: cleanVal(hsnVal),
+                                      total_amount: di.total_amount ?? 0,
+                                      remarks: cleanVal(di.remarks),
+                                      out_dc_no: "",
+                                      out_dc_date: "",
+                                      out_quantity: "",
+                                      ok: "",
+                                      reject: "",
+                                    };
+                                    setStagedDailyDispatches((prev) => [...prev, newRow]);
+                                    setNotice(`Added Daily Input #${di.id} (P.O.No: ${poVal}) to dispatch table below.`);
+                                  };
+                                  return (
+                                    <tr
+                                      key={di.id}
+                                      className="staged-saved-row"
+                                      style={{
+                                        cursor: "pointer",
+                                        background: isSelectedRow ? "#eff6ff" : undefined,
+                                      }}
+                                      onClick={handleSelectJobWorkRow}
+                                    >
+                                      {visibleJobWorkCols.map((col) => {
+                                        const rawVal = col.getValue(di);
+                                        const displayVal = isNonEmptyDisplayVal(rawVal) ? rawVal : "";
+                                        return (
+                                          <td key={col.key} className={col.tdClassName} style={col.tdStyle}>
+                                            {col.bold && displayVal !== "" ? <strong>{displayVal}</strong> : displayVal}
+                                          </td>
+                                        );
+                                      })}
+                                      <td style={{ width: "10%", textAlign: "center", padding: "6px 8px" }}>
+                                        <button
+                                          type="button"
+                                          className="table-btn-add-more"
+                                          style={
+                                            isSelectedRow
+                                              ? { background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5" }
+                                              : undefined
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSelectJobWorkRow();
+                                          }}
+                                        >
+                                          {isSelectedRow ? "Deselect ✕" : "Select"}
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {stagedDailyDispatches.length > 0 && (
+                          <div className="dispatch-selected-section">
+                            <div className="dispatch-selected-header">
+                              <div className="dispatch-selected-title-wrap">
+                                <h3>Selected Daily Input for Dispatch ({stagedDailyDispatches.length})</h3>
+                                <span className="dispatch-selected-hint">
+                                  Enter Out DC No, Out DC Date, Out Quantity, OK, and Reject for the selected Daily Input(s), then click Save Dispatch.
+                                </span>
+                              </div>
+                              <div className="dispatch-selected-actions">
+                                <button
+                                  type="button"
+                                  className="dispatch-clear-btn"
+                                  onClick={() => {
+                                    setStagedDailyDispatches([]);
+                                    setNotice("Cleared selected daily inputs.");
+                                  }}
+                                >
+                                  Clear All
+                                </button>
+                                <button
+                                  type="button"
+                                  className="dispatch-save-btn"
+                                  disabled={isSaving}
+                                  onClick={async () => {
+                                    setPageError("");
+                                    setNotice("");
+                                    setIsSaving(true);
+                                    try {
+                                      let savedCount = 0;
+                                      for (const row of stagedDailyDispatches) {
+                                        const payload = {
+                                          type: row.type || "Job work",
+                                          daily_input_id: row.daily_input_id ? Number(row.daily_input_id) : null,
+                                          product_id: row.product_id ? Number(row.product_id) : null,
+                                          supplier_id: row.supplier_id ? Number(row.supplier_id) : null,
+                                          DC_no: row.DC_no || null,
+                                          DC_date: row.DC_date || null,
+                                          bill_no: row.bill_no || null,
+                                          bill_date: row.bill_date || null,
+                                          item: row.item || null,
+                                          zach_code: row.zach_code || null,
+                                          po_batch_no: row.po_batch_no || null,
+                                          sach_code: row.sach_code || null,
+                                          ls: row.ls || null,
+                                          quantity: row.quantity !== "" && row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : null,
+                                          bin: row.bin || null,
+                                          boxes: row.boxes || null,
+                                          unit: row.unit || "num",
+                                          hsn_code: row.hsn_code || null,
+                                          total_amount: row.total_amount !== "" && row.total_amount !== null && row.total_amount !== undefined ? Number(row.total_amount) : 0,
+                                          remarks: row.remarks || null,
+                                          out_dc_no: row.out_dc_no && String(row.out_dc_no).trim() !== "" ? String(row.out_dc_no).trim() : null,
+                                          out_dc_date: row.out_dc_date && String(row.out_dc_date).trim() !== "" ? String(row.out_dc_date).trim() : null,
+                                          out_quantity: row.out_quantity !== "" && row.out_quantity !== null && row.out_quantity !== undefined ? Number(row.out_quantity) : null,
+                                          ok: row.ok !== "" && row.ok !== null && row.ok !== undefined ? Number(row.ok) : null,
+                                          reject: row.reject !== "" && row.reject !== null && row.reject !== undefined ? Number(row.reject) : null,
+                                        };
+                                        const response = await window.desktop.createWorkspaceRecord("dailyDispatch", payload);
+                                        if (!response?.ok) {
+                                          setPageError(response?.error || "Failed to save Daily Dispatch record.");
+                                          setIsSaving(false);
+                                          return;
+                                        }
+                                        savedCount += 1;
+                                      }
+                                      setStagedDailyDispatches([]);
+                                      setRequestVersion((v) => v + 1);
+                                      setNotice(`Saved ${savedCount} Daily Dispatch record${savedCount === 1 ? "" : "s"} successfully.`);
+                                    } catch (err) {
+                                      setPageError(err?.message || "Failed to save Daily Dispatch record.");
+                                    } finally {
+                                      setIsSaving(false);
+                                    }
+                                  }}
+                                >
+                                  {isSaving ? "Saving…" : `Save Dispatch (${stagedDailyDispatches.length})`}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="dispatch-selected-table-wrapper">
+                              <table className="dispatch-selected-table">
+                                <colgroup>
+                                  <col style={{ width: "9.5%" }} />
+                                  <col style={{ width: "14%" }} />
+                                  <col style={{ width: "8.5%" }} />
+                                  <col style={{ width: "4.5%" }} />
+                                  <col style={{ width: "6%" }} />
+                                  <col style={{ width: "4.5%" }} />
+                                  <col style={{ width: "4.5%" }} />
+                                  <col style={{ width: "10%" }} />
+                                  <col style={{ width: "11.5%" }} />
+                                  <col style={{ width: "8%" }} />
+                                  <col style={{ width: "7%" }} />
+                                  <col style={{ width: "7%" }} />
+                                  <col style={{ width: "5%" }} />
+                                </colgroup>
+                                <thead>
+                                  <tr>
+                                    <th title="P.O. Number">P.O. Number</th>
+                                    <th title="Item">Item</th>
+                                    <th title="Sach">Sach</th>
+                                    <th style={{ textAlign: "center" }} title="Ls">Ls</th>
+                                    <th style={{ textAlign: "right" }} title="Quantity">Quantity</th>
+                                    <th style={{ textAlign: "center" }} title="Bin">Bin</th>
+                                    <th style={{ textAlign: "center" }} title="Boxes">Boxes</th>
+                                    <th className="dispatch-input-col-header" title="Out DC No">Out DC No</th>
+                                    <th className="dispatch-input-col-header" title="Out DC Date">Out DC Date</th>
+                                    <th className="dispatch-input-col-header" title="Out Quantity">Out Quantity</th>
+                                    <th className="dispatch-input-col-header" title="OK">OK</th>
+                                    <th className="dispatch-input-col-header" title="Reject">Reject</th>
+                                    <th style={{ textAlign: "center" }} title="Action">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {stagedDailyDispatches.map((row, idx) => {
+                                    const updateStagedField = (fieldKey, val) => {
+                                      setStagedDailyDispatches((prev) =>
+                                        prev.map((item, i) => (i === idx ? { ...item, [fieldKey]: val } : item))
+                                      );
+                                    };
+                                    return (
+                                      <tr key={`${row.daily_input_id}-${idx}`}>
+                                        <td title={row.po_batch_no}>
+                                          <strong>{row.po_batch_no}</strong>
+                                        </td>
+                                        <td className="staged-item-name" title={row.item}>
+                                          {row.item}
+                                        </td>
+                                        <td title={row.sach_code}>{row.sach_code}</td>
+                                        <td style={{ textAlign: "center" }}>{row.ls}</td>
+                                        <td style={{ textAlign: "right", fontWeight: 600 }}>
+                                          {row.quantity}
+                                        </td>
+                                        <td style={{ textAlign: "center" }}>{row.bin}</td>
+                                        <td style={{ textAlign: "center" }}>{row.boxes}</td>
+                                        <td>
+                                          <input
+                                            type="text"
+                                            className="dispatch-inline-input"
+                                            placeholder="Out DC No"
+                                            value={row.out_dc_no ?? ""}
+                                            onChange={(e) => updateStagedField("out_dc_no", e.target.value)}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="date"
+                                            className="dispatch-inline-input"
+                                            value={row.out_dc_date ?? ""}
+                                            onChange={(e) => updateStagedField("out_dc_date", e.target.value)}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            min="0"
+                                            className="dispatch-inline-input numeric"
+                                            placeholder="0"
+                                            value={row.out_quantity ?? ""}
+                                            onChange={(e) => updateStagedField("out_quantity", e.target.value)}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            min="0"
+                                            className="dispatch-inline-input numeric"
+                                            placeholder="0"
+                                            value={row.ok ?? ""}
+                                            onChange={(e) => updateStagedField("ok", e.target.value)}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            min="0"
+                                            className="dispatch-inline-input numeric"
+                                            placeholder="0"
+                                            value={row.reject ?? ""}
+                                            onChange={(e) => updateStagedField("reject", e.target.value)}
+                                          />
+                                        </td>
+                                        <td style={{ textAlign: "center" }}>
+                                          <button
+                                            type="button"
+                                            className="dispatch-remove-btn"
+                                            title="Remove row"
+                                            onClick={() => {
+                                              setStagedDailyDispatches((prev) => prev.filter((_, i) => i !== idx));
+                                            }}
+                                          >
+                                            ✕
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               {isFormOpen && (
                 <form
@@ -5372,16 +6621,13 @@ async function handleDeleteSelected() {
                         });
 
                       if (isWithZach) {
-                        const zachCode = (formValues.zach_code ?? (editingRecord ? editingRecord.zach_code : "") ?? "").trim();
-                        if (!zachCode) {
-                          setPageError("Zach Code is required when 'with zach code' is selected.");
-                          return;
-                        }
                         setProductSaveConfirm({
                           name,
                           type: pType,
                           isZachCode: true,
-                          zachCode,
+                          ls: formValues.ls ?? (editingRecord?.ls ?? ""),
+                          hsnCode: formValues.hsn_code ?? (editingRecord?.hsn_code ?? ""),
+                          sachCode: formValues.sach_code ?? (editingRecord?.sach_code ?? ""),
                           elementName: null,
                           weldedElementName: null,
                           rawMaterials: rms,
@@ -5410,7 +6656,9 @@ async function handleDeleteSelected() {
                         name,
                         type: pType,
                         isZachCode: false,
-                        zachCode: null,
+                        ls: formValues.ls ?? (editingRecord?.ls ?? ""),
+                        hsnCode: formValues.hsn_code ?? (editingRecord?.hsn_code ?? ""),
+                        sachCode: formValues.sach_code ?? (editingRecord?.sach_code ?? ""),
                         elementName: elName,
                         weldedElementName: weName,
                         rawMaterials: rms,
@@ -5452,8 +6700,18 @@ async function handleDeleteSelected() {
                       const renderField = (field) => {
                         const currentProductMode =
                           formValues.product_mode ||
-                          (editingRecord?.has_zach_code || Boolean(editingRecord?.zach_code)
-                            ? "with_zach_code"
+                          (editingRecord
+                            ? (editingRecord.has_zach_code || Boolean(editingRecord.zach_code)
+                                ? "with_zach_code"
+                                : "without_zach_code")
+                            : "with_zach_code");
+
+                        const currentZachMode =
+                          formValues.zach_mode ||
+                          (editingRecord
+                            ? (editingRecord.has_zach_code || Boolean(editingRecord.zach_code)
+                                ? "with_zach_code"
+                                : "without_zach_code")
                             : "without_zach_code");
 
                         if (
@@ -5462,6 +6720,48 @@ async function handleDeleteSelected() {
                           currentProductMode !== field.dependsOnProductMode
                         ) {
                           return null;
+                        }
+
+                        if (
+                          activeSection === "rawMaterials" &&
+                          field.dependsOnZachMode &&
+                          currentZachMode !== field.dependsOnZachMode
+                        ) {
+                          return null;
+                        }
+
+                        if (field.type === "rawMaterialZachRadio") {
+                          const currentVal = currentZachMode;
+                          return (
+                            <div className="form-field-group product-mode-group field-wide" key={field.name}>
+                              <div className="product-mode-radios">
+                                <label className={`product-mode-radio-label ${currentVal === "with_zach_code" ? "selected" : ""}`}>
+                                  <input
+                                    type="radio"
+                                    name="zach_mode"
+                                    value="with_zach_code"
+                                    checked={currentVal === "with_zach_code"}
+                                    onChange={() => handleFormFieldChange("zach_mode", "with_zach_code")}
+                                    disabled={isSaving}
+                                  />
+                                  <span className="radio-custom" />
+                                  <span className="radio-text">zach no</span>
+                                </label>
+                                <label className={`product-mode-radio-label ${currentVal === "without_zach_code" ? "selected" : ""}`}>
+                                  <input
+                                    type="radio"
+                                    name="zach_mode"
+                                    value="without_zach_code"
+                                    checked={currentVal === "without_zach_code"}
+                                    onChange={() => handleFormFieldChange("zach_mode", "without_zach_code")}
+                                    disabled={isSaving}
+                                  />
+                                  <span className="radio-custom" />
+                                  <span className="radio-text">no zach no</span>
+                                </label>
+                              </div>
+                            </div>
+                          );
                         }
 
                         if (field.type === "productModeRadio") {
@@ -5539,7 +6839,13 @@ async function handleDeleteSelected() {
 
                         const isFieldRequired =
                           typeof field.required === "function"
-                            ? field.required(field.dependsOnProductMode ? currentProductMode : formType)
+                            ? field.required(
+                                field.dependsOnProductMode
+                                  ? currentProductMode
+                                  : field.dependsOnZachMode
+                                    ? currentZachMode
+                                    : formType
+                              )
                             : Boolean(field.required);
 
                         const lookupKey =
@@ -6024,6 +7330,7 @@ async function handleDeleteSelected() {
                                 }
                                 required={!isFieldDisabled && isFieldRequired}
                                 disabled={isFieldDisabled}
+                                placeholder={field.placeholder || ""}
                                 type={field.type || "text"}
                                 value={formValues[field.name] ?? ""}
                               />
@@ -6073,12 +7380,6 @@ async function handleDeleteSelected() {
 
                         return (
                           <>
-                            {documentFields.length > 0 && (
-                              <div className="document-fields">
-                                {documentFields.map(renderField)}
-                              </div>
-                            )}
-
                             {/* SELECT SUPPLIER TYPE: SUPPLIER OR GENERAL */}
                             <div className="supplier-type-selector-card">
                               <div className="supplier-type-header">
@@ -6118,33 +7419,171 @@ async function handleDeleteSelected() {
                               </div>
                             </div>
 
-                            {/* IF SUPPLIER IS SELECTED: SHOW SUPPLIER LIST AND REST OF FLOW IS SAME */}
+                            {isSupplierMode && supplierPickerFields.length > 0 && (
+                              <div className="daily-supplier-picker-wrap">
+                                {supplierPickerFields.map(renderField)}
+                              </div>
+                            )}
+
+                            {isGeneralMode && (
+                              <div className="general-section-card" style={{ marginBottom: "14px" }}>
+                                <div className="general-card-header">
+                                  <div className="general-card-title">
+                                    <span>🏢</span>
+                                    <span>Supplier Details</span>
+                                  </div>
+                                  <span className="general-card-subtext">
+                                    Enter supplier details (saved in daily input only)
+                                  </span>
+                                </div>
+
+                                <div className="general-fields-grid-4">
+                                  <label>
+                                    <span>Supplier Name</span>
+                                    <input
+                                      id="record-general-supplier_company_name"
+                                      type="text"
+                                      placeholder="Enter supplier name"
+                                      value={formValues.supplier_company_name ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_company_name", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label>
+                                    <span>Contact Person</span>
+                                    <input
+                                      id="record-general-supplier_contact_person"
+                                      type="text"
+                                      placeholder="Contact person"
+                                      value={formValues.supplier_contact_person ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_contact_person", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label>
+                                    <span>Phone</span>
+                                    <input
+                                      id="record-general-supplier_phone"
+                                      type="text"
+                                      placeholder="Phone number"
+                                      value={formValues.supplier_phone ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_phone", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label>
+                                    <span>Email</span>
+                                    <input
+                                      id="record-general-supplier_email"
+                                      type="email"
+                                      placeholder="supplier@example.com"
+                                      value={formValues.supplier_email ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_email", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label className="field-span-2">
+                                    <span>Address</span>
+                                    <input
+                                      id="record-general-supplier_address"
+                                      type="text"
+                                      placeholder="Office / factory address"
+                                      value={formValues.supplier_address ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_address", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label>
+                                    <span>City</span>
+                                    <input
+                                      id="record-general-supplier_city"
+                                      type="text"
+                                      placeholder="City"
+                                      value={formValues.supplier_city ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_city", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label>
+                                    <span>State</span>
+                                    <select
+                                      id="record-general-supplier_state"
+                                      value={formValues.supplier_state ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_state", e.target.value)}
+                                    >
+                                      <option value="">Select State</option>
+                                      {INDIAN_STATES.map((st) => (
+                                        <option key={st} value={st}>
+                                          {st}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  <label>
+                                    <span>Pincode</span>
+                                    <input
+                                      id="record-general-supplier_pincode"
+                                      type="text"
+                                      placeholder="Pincode"
+                                      value={formValues.supplier_pincode ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_pincode", e.target.value)}
+                                    />
+                                  </label>
+
+                                  <label>
+                                    <span>GST Number</span>
+                                    <input
+                                      id="record-general-supplier_gst_number"
+                                      type="text"
+                                      placeholder="GSTIN"
+                                      value={formValues.supplier_gst_number ?? ""}
+                                      onChange={(e) => handleFormFieldChange("supplier_gst_number", e.target.value)}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            )}
+
+                            {documentFields.length > 0 && (
+                              <div className="document-fields">
+                                {documentFields.map(renderField)}
+                              </div>
+                            )}
+
+                            {/* IF SUPPLIER IS SELECTED: SHOW REST OF FLOW */}
                             {isSupplierMode && (
                               <>
-                                {supplierPickerFields.length > 0 && (
-                                  <div className="daily-supplier-picker-wrap">
-                                    {supplierPickerFields.map(renderField)}
-                                  </div>
-                                )}
 
-                                {/* SELECT RAW MATERIAL TYPE: RAW MATERIAL OR OTHER */}
+                                {/* SELECT ITEM TYPE: RAW MATERIAL, PRODUCT, OTHER */}
                                 <div className="rm-type-selector-card">
                                   <div className="rm-type-header">
                                     <div className="rm-type-label-wrap">
-                                      <span className="rm-type-title">Select Raw Material Type:</span>
+                                      <span className="rm-type-title">Select Item Type:</span>
                                       <span className="rm-type-required">*</span>
                                     </div>
-                                    <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Raw Material Type">
+                                    <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Item Type">
                                       <button
                                         type="button"
                                         role="radio"
-                                        aria-checked={formValues.raw_material_type !== "other"}
-                                        className={`rm-type-pill-btn ${formValues.raw_material_type !== "other" ? "active" : ""}`}
+                                        aria-checked={formValues.raw_material_type === "raw_material" || (!formValues.raw_material_type || (formValues.raw_material_type !== "product" && formValues.raw_material_type !== "other"))}
+                                        className={`rm-type-pill-btn ${formValues.raw_material_type === "raw_material" || (!formValues.raw_material_type || (formValues.raw_material_type !== "product" && formValues.raw_material_type !== "other")) ? "active" : ""}`}
                                         onClick={() => handleRawMaterialTypeSelect("raw_material")}
                                       >
                                         <span className="rm-type-pill-icon">📦</span>
                                         <span>Raw Material</span>
-                                        {formValues.raw_material_type !== "other" && <span className="rm-type-check">✓</span>}
+                                        {(formValues.raw_material_type === "raw_material" || (!formValues.raw_material_type || (formValues.raw_material_type !== "product" && formValues.raw_material_type !== "other"))) && <span className="rm-type-check">✓</span>}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={formValues.raw_material_type === "product"}
+                                        className={`rm-type-pill-btn product-mode ${formValues.raw_material_type === "product" ? "active" : ""}`}
+                                        onClick={() => handleRawMaterialTypeSelect("product")}
+                                      >
+                                        <span className="rm-type-pill-icon">⚙️</span>
+                                        <span>Product</span>
+                                        {formValues.raw_material_type === "product" && <span className="rm-type-check">✓</span>}
                                       </button>
                                       <button
                                         type="button"
@@ -6159,14 +7598,35 @@ async function handleDeleteSelected() {
                                       </button>
                                     </div>
                                     <span className="rm-type-badge-hint">
-                                      {formValues.raw_material_type !== "other"
-                                        ? "List of raw materials is displayed below and can be searched"
-                                        : "Enter raw material name and all details directly as inputs"}
+                                      {formValues.raw_material_type === "product"
+                                        ? "Search and select a product from the list below, then enter details & invoice value in the table"
+                                        : formValues.raw_material_type === "other"
+                                        ? "Enter item name and all details directly as inputs"
+                                        : "List of raw materials is displayed below and can be searched"}
                                     </span>
                                   </div>
                                 </div>
 
-                                {formValues.raw_material_type !== "other" ? (
+                                {formValues.raw_material_type === "product" ? (
+                                  <div className="daily-rm-picker-wrap">
+                                    <DailyInputProductPicker
+                                      products={lookupOptions.products || []}
+                                      selectedProductId={formValues.product_id || formValues.element_id}
+                                      selectedItemName={formValues.item}
+                                      onSelect={(selected) => {
+                                        handleDailyInputItemSelect({ type: "product", id: selected.id, item: selected });
+                                      }}
+                                      onDeselect={handleDailyInputItemDeselect}
+                                      onAddNewProduct={(searched) => handleOpenQuickAddProduct(searched)}
+                                      disabled={isSaving}
+                                      isLoading={lookupLoading.products}
+                                      error={lookupErrors.products}
+                                      onRetry={() => setLookupRequestVersion((v) => v + 1)}
+                                      hasError={Boolean(pageError && !formValues.item && !formValues.product_id)}
+                                      required={true}
+                                    />
+                                  </div>
+                                ) : formValues.raw_material_type !== "other" ? (
                                   <>
                                     <div className="daily-rm-picker-wrap">
                                       <DailyInputRawMaterialPicker
@@ -6317,151 +7777,355 @@ async function handleDeleteSelected() {
 
                                 <div className="staged-raw-materials-section">
                                   <div className="staged-raw-materials-header">
-                                    <h3>Raw Materials Table ({stagedDailyInputs.length})</h3>
+                                    <h3>Items Table ({stagedDailyInputs.length})</h3>
                                     <span className="staged-hint">
-                                      Select raw material above, enter quantity & rate below, then click "+ Add" to save into table.
+                                      Select item above, enter quantity below, then click "+ Add" to save into table.
                                     </span>
                                   </div>
                                   <div className="staged-table-wrapper">
                                     <table className="staged-table">
-                                      <colgroup>
-                                        <col style={{ width: "3.5%" }} />
-                                        <col style={{ width: "16%" }} />
-                                        <col style={{ width: "6.5%" }} />
-                                        <col style={{ width: "5%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "8%" }} />
-                                        <col style={{ width: "8%" }} />
-                                        <col style={{ width: "8%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "9.5%" }} />
-                                        <col style={{ width: "5.5%" }} />
-                                      </colgroup>
+                                      {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                        <colgroup>
+                                          <col style={{ width: "3.5%" }} />
+                                          <col style={{ width: "8%" }} />
+                                          <col style={{ width: "12%" }} />
+                                          <col style={{ width: "7%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "6%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "7.5%" }} />
+                                          <col style={{ width: "5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "8%" }} />
+                                          <col style={{ width: "10%" }} />
+                                          <col style={{ width: "10%" }} />
+                                        </colgroup>
+                                      ) : (
+                                        <colgroup>
+                                          <col style={{ width: "3.5%" }} />
+                                          <col style={{ width: "12%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "7.5%" }} />
+                                          <col style={{ width: "11%" }} />
+                                          <col style={{ width: "10%" }} />
+                                        </colgroup>
+                                      )}
                                       <thead>
                                         <tr>
-                                          <th style={{ textAlign: "center" }} title="Row Number">#</th>
-                                          <th title="Name of Raw Material">Raw Material</th>
-                                          <th className="numeric-cell" title="Quantity">Qty</th>
-                                          <th title="Unit">Unit</th>
-                                          <th className="numeric-cell" title="Rate">Rate</th>
-                                          <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
-                                          <th className="numeric-cell" title="Discount Value">Disc Val</th>
-                                          <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
-                                          <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
-                                          <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
-                                          <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                          <th style={{ textAlign: "center" }} title="ID">ID</th>
+                                          {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                            <>
+                                              <th title="P.O.No / Batch No">P.O.No</th>
+                                              <th title="Name of Item">Item</th>
+                                              <th title="Sach Code">Sach</th>
+                                              <th title="Ls">Ls</th>
+                                              <th className="numeric-cell" title="Quantity">Qty</th>
+                                              <th title="Bin">Bin</th>
+                                              <th title="Boxes">Boxes</th>
+                                              <th title="Zach Code">Zach Code</th>
+                                              <th title="Unit">Unit</th>
+                                              <th title="HSN Code">HSN Code</th>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <th title="Name of Item">Item</th>
+                                              <th className="numeric-cell" title="Quantity">Qty</th>
+                                              <th title="Unit">Unit</th>
+                                              <th className="numeric-cell" title="Rate">Rate</th>
+                                              <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
+                                              <th className="numeric-cell" title="Discount Value">Disc Val</th>
+                                              <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
+                                              <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
+                                              <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
+                                              <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                            </>
+                                          )}
                                           <th className="numeric-cell" title="Invoice Value">Invoice Val</th>
+                                          <th title="Remarks">Remarks</th>
                                           <th style={{ textAlign: "center" }} title="Action">Action</th>
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {stagedDailyInputs.map((row, idx) => (
-                                          <tr key={row._tempId} className="staged-saved-row">
-                                            <td style={{ textAlign: "center" }}>{idx + 1}</td>
-                                            <td className="staged-item-name" title={row.item || "—"}>{row.item || "—"}</td>
-                                            <td className="numeric-cell">{row.quantity}</td>
-                                            <td>{row.unit || "—"}</td>
-                                            <td className="numeric-cell">₹{Number(row.rate || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.basic_value || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.discount_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.cgst_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.ut_sgst_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.igst_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
-                                            <td className="staged-actions-cell" style={{ textAlign: "center" }}>
-                                              <button
-                                                type="button"
-                                                className="staged-action-btn edit-staged-btn"
-                                                onClick={() => handleEditStagedItem(idx)}
-                                                title="Edit this item"
-                                              >
-                                                ✎
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="staged-action-btn delete-staged-btn"
-                                                onClick={() => handleDeleteStagedItem(idx)}
-                                                title="Remove this item"
-                                              >
-                                                ✕
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        ))}
+                                        {stagedDailyInputs.map((row, idx) => {
+                                          const isRowProduct = row.type === "product" || row.type === "element" || row.raw_material_type === "product";
+                                          const isTableProduct = formValues.type === "product" || formValues.raw_material_type === "product";
+                                          return (
+                                            <tr key={row._tempId} className="staged-saved-row">
+                                              <td style={{ textAlign: "center" }}>{idx + 1}</td>
+                                              {isTableProduct ? (
+                                                <>
+                                                  <td>{row.po_batch_no || "—"}</td>
+                                                  <td className="staged-item-name" title={row.item || "—"}>
+                                                    {row.item || "—"}
+                                                    {isRowProduct && (
+                                                      <span style={{ marginLeft: "6px", fontSize: "10px", padding: "1px 5px", background: "#ede9fe", color: "#6d28d9", borderRadius: "4px", border: "1px solid #c4b5fd" }}>
+                                                        Product
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td>{row.sach_code || "—"}</td>
+                                                  <td>{row.ls || "—"}</td>
+                                                  <td className="numeric-cell">{row.quantity}</td>
+                                                  <td>{row.bin || "—"}</td>
+                                                  <td>{row.boxes || "—"}</td>
+                                                  <td>{row.zach_code || "—"}</td>
+                                                  <td>{row.unit || "—"}</td>
+                                                  <td>{row.hsn_code || "—"}</td>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <td className="staged-item-name" title={row.item || "—"}>
+                                                    {row.item || "—"}
+                                                    {isRowProduct && (
+                                                      <span style={{ marginLeft: "6px", fontSize: "10px", padding: "1px 5px", background: "#ede9fe", color: "#6d28d9", borderRadius: "4px", border: "1px solid #c4b5fd" }}>
+                                                        Product
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td className="numeric-cell">{row.quantity}</td>
+                                                  <td>{row.unit || "—"}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.rate || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.basic_value || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.discount_amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.cgst_amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.ut_sgst_amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.igst_amount || 0).toFixed(2)}`}</td>
+                                                </>
+                                              )}
+                                              <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
+                                              <td title={row.remarks || "—"}>{row.remarks || "—"}</td>
+                                              <td className="staged-actions-cell" style={{ textAlign: "center" }}>
+                                                <div className="staged-actions-wrap">
+                                                  <button
+                                                    type="button"
+                                                    className="staged-action-btn edit-staged-btn"
+                                                    onClick={() => handleEditStagedItem(idx)}
+                                                    title="Edit this item"
+                                                  >
+                                                    Edit
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    className="staged-action-btn delete-staged-btn"
+                                                    onClick={() => handleDeleteStagedItem(idx)}
+                                                    title="Delete this item"
+                                                  >
+                                                    Delete
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
 
                                         <tr className="table-active-input-row">
                                           <td style={{ textAlign: "center", fontWeight: "700", color: "#64748b" }}>
                                             {stagedDailyInputs.length + 1}
                                           </td>
-                                          <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter raw material name above" : "Select raw material from above")}>
-                                            {(formValues.material_name || formValues.item) ? (
-                                              <div className="table-active-item-badge">
-                                                <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
-                                              </div>
-                                            ) : (
-                                              <div className="table-active-item-placeholder">
-                                                {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
-                                              </div>
-                                            )}
-                                          </td>
-                                          <td className="numeric-cell">
-                                            <input
-                                              type="number"
-                                              step="any"
-                                              min="0.0001"
-                                              placeholder="0.00"
-                                              className="table-input table-qty-input numeric-input"
-                                              value={formValues.quantity ?? ""}
-                                              onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
-                                            />
-                                          </td>
+                                          {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                            <>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="P.O.No"
+                                                  className="table-input"
+                                                  value={formValues.po_batch_no ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("po_batch_no", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter name above" : "Select item from above")}>
+                                                {(formValues.material_name || formValues.item) ? (
+                                                  <div className="table-active-item-badge">
+                                                    <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
+                                                    <span style={{ marginLeft: "5px", fontSize: "10px", padding: "1px 4px", background: "#ede9fe", color: "#6d28d9", borderRadius: "3px" }}>
+                                                      Product
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="table-active-item-placeholder">
+                                                    {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Sach"
+                                                  className="table-input"
+                                                  value={formValues.sach_code ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("sach_code", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Ls"
+                                                  className="table-input"
+                                                  value={formValues.ls ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("ls", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="any"
+                                                  min="0.0001"
+                                                  placeholder="0.00"
+                                                  className="table-input table-qty-input numeric-input"
+                                                  value={formValues.quantity ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Bin"
+                                                  className="table-input"
+                                                  value={formValues.bin ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("bin", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Boxes"
+                                                  className="table-input"
+                                                  value={formValues.boxes ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("boxes", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Zach Code"
+                                                  className="table-input"
+                                                  value={formValues.zach_code ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("zach_code", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <select
+                                                  className="table-input table-unit-select"
+                                                  value={formValues.unit || "num"}
+                                                  onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                                >
+                                                  <option value="num">num</option>
+                                                  <option value="kg">kg</option>
+                                                  <option value="litre">litre</option>
+                                                  <option value="mtrs">mtrs</option>
+                                                  <option value="other">other</option>
+                                                </select>
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="HSN Code"
+                                                  className="table-input"
+                                                  value={formValues.hsn_code ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("hsn_code", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="0.01"
+                                                  min="0"
+                                                  placeholder="0.00"
+                                                  className="table-input numeric-input"
+                                                  value={formValues.total_amount ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("total_amount", e.target.value)}
+                                                />
+                                              </td>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter name above" : "Select item from above")}>
+                                                {(formValues.material_name || formValues.item) ? (
+                                                  <div className="table-active-item-badge">
+                                                    <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="table-active-item-placeholder">
+                                                    {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="any"
+                                                  min="0.0001"
+                                                  placeholder="0.00"
+                                                  className="table-input table-qty-input numeric-input"
+                                                  value={formValues.quantity ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <select
+                                                  className="table-input table-unit-select"
+                                                  value={formValues.unit || "num"}
+                                                  onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                                >
+                                                  <option value="num">num</option>
+                                                  <option value="kg">kg</option>
+                                                  <option value="litre">litre</option>
+                                                  <option value="mtrs">mtrs</option>
+                                                  <option value="other">other</option>
+                                                </select>
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="0.01"
+                                                  min="0"
+                                                  placeholder="0.00"
+                                                  className="table-input table-rate-input numeric-input"
+                                                  value={formValues.rate ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.basic_value || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.discount_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.cgst_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.ut_sgst_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.igst_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell staged-total-cell">
+                                                {`₹${Number(formValues.total_amount || 0).toFixed(2)}`}
+                                              </td>
+                                            </>
+                                          )}
                                           <td>
-                                            <select
-                                              className="table-input table-unit-select"
-                                              value={formValues.unit || "num"}
-                                              onChange={(e) => handleFormFieldChange("unit", e.target.value)}
-                                            >
-                                              <option value="num">num</option>
-                                              <option value="kg">kg</option>
-                                              <option value="litre">litre</option>
-                                              <option value="mtrs">mtrs</option>
-                                              <option value="other">other</option>
-                                            </select>
-                                          </td>
-                                          <td className="numeric-cell">
                                             <input
-                                              type="number"
-                                              step="0.01"
-                                              min="0"
-                                              placeholder="0.00"
-                                              className="table-input table-rate-input numeric-input"
-                                              value={formValues.rate ?? ""}
-                                              onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                              type="text"
+                                              placeholder="Remarks"
+                                              className="table-input"
+                                              value={formValues.remarks ?? ""}
+                                              onChange={(e) => handleFormFieldChange("remarks", e.target.value)}
                                             />
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.basic_value || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.discount_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.cgst_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.ut_sgst_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.igst_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell staged-total-cell">
-                                            ₹{Number(formValues.total_amount || 0).toFixed(2)}
                                           </td>
                                           <td style={{ textAlign: "center" }}>
                                             {editingRecord ? (
@@ -6471,7 +8135,7 @@ async function handleDeleteSelected() {
                                                 type="button"
                                                 className="table-btn-add-more"
                                                 onClick={handleAddMoreDailyInput}
-                                                title="Add this raw material row to the table"
+                                                title="Add this row to the table"
                                               >
                                                 + Add
                                               </button>
@@ -6484,159 +8148,57 @@ async function handleDeleteSelected() {
                                           <td colSpan={2}>
                                             <strong>Total ({stagedDailyInputs.length})</strong>
                                           </td>
-                                          <td className="numeric-cell">
-                                            <strong>
-                                              {Number.isInteger(stagedTotals.quantity)
-                                                ? String(stagedTotals.quantity)
-                                                : String(Number(stagedTotals.quantity.toFixed(4)))}
-                                            </strong>
-                                          </td>
-                                          <td>—</td>
-                                          <td>—</td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                          {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                            <>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td className="numeric-cell">
+                                                <strong>
+                                                  {Number.isInteger(stagedTotals.quantity)
+                                                    ? String(stagedTotals.quantity)
+                                                    : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                                </strong>
+                                              </td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <td className="numeric-cell">
+                                                <strong>
+                                                  {Number.isInteger(stagedTotals.quantity)
+                                                    ? String(stagedTotals.quantity)
+                                                    : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                                </strong>
+                                              </td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                            </>
+                                          )}
                                           <td className="numeric-cell staged-total-cell"><strong>₹{stagedTotals.total_amount.toFixed(2)}</strong></td>
+                                          <td>—</td>
                                           <td>—</td>
                                         </tr>
                                       </tfoot>
                                     </table>
                                   </div>
                                 </div>
-
-                                {remarksFields.length > 0 && (
-                                  <div className="remarks-fields-row">
-                                    {remarksFields.map(renderField)}
-                                  </div>
-                                )}
                               </>
                             )}
 
-                            {/* IF GENERAL IS SELECTED: SHOW SUPPLIER DETAILS, RAW MATERIAL DETAILS AND DAILY INPUTS TABLE */}
+                            {/* IF GENERAL IS SELECTED: SHOW RAW MATERIAL DETAILS AND DAILY INPUTS TABLE */}
                             {isGeneralMode && (
                               <div className="general-mode-container">
-                                {/* SECTION 0: SUPPLIER DETAILS */}
-                                <div className="general-section-card">
-                                  <div className="general-card-header">
-                                    <div className="general-card-title">
-                                      <span>🏢</span>
-                                      <span>Supplier Details</span>
-                                    </div>
-                                    <span className="general-card-subtext">
-                                      Enter supplier details (saved in daily input only)
-                                    </span>
-                                  </div>
-
-                                  <div className="general-fields-grid-4">
-                                    <label>
-                                      <span>Supplier Name</span>
-                                      <input
-                                        id="record-general-supplier_company_name"
-                                        type="text"
-                                        placeholder="Enter supplier name"
-                                        value={formValues.supplier_company_name ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_company_name", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label>
-                                      <span>Contact Person</span>
-                                      <input
-                                        id="record-general-supplier_contact_person"
-                                        type="text"
-                                        placeholder="Contact person"
-                                        value={formValues.supplier_contact_person ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_contact_person", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label>
-                                      <span>Phone</span>
-                                      <input
-                                        id="record-general-supplier_phone"
-                                        type="text"
-                                        placeholder="Phone number"
-                                        value={formValues.supplier_phone ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_phone", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label>
-                                      <span>Email</span>
-                                      <input
-                                        id="record-general-supplier_email"
-                                        type="email"
-                                        placeholder="supplier@example.com"
-                                        value={formValues.supplier_email ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_email", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label className="field-span-2">
-                                      <span>Address</span>
-                                      <input
-                                        id="record-general-supplier_address"
-                                        type="text"
-                                        placeholder="Office / factory address"
-                                        value={formValues.supplier_address ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_address", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label>
-                                      <span>City</span>
-                                      <input
-                                        id="record-general-supplier_city"
-                                        type="text"
-                                        placeholder="City"
-                                        value={formValues.supplier_city ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_city", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label>
-                                      <span>State</span>
-                                      <select
-                                        id="record-general-supplier_state"
-                                        value={formValues.supplier_state ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_state", e.target.value)}
-                                      >
-                                        <option value="">Select State</option>
-                                        {INDIAN_STATES.map((st) => (
-                                          <option key={st} value={st}>
-                                            {st}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
-
-                                    <label>
-                                      <span>Pincode</span>
-                                      <input
-                                        id="record-general-supplier_pincode"
-                                        type="text"
-                                        placeholder="Pincode"
-                                        value={formValues.supplier_pincode ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_pincode", e.target.value)}
-                                      />
-                                    </label>
-
-                                    <label>
-                                      <span>GST Number</span>
-                                      <input
-                                        id="record-general-supplier_gst_number"
-                                        type="text"
-                                        placeholder="GSTIN"
-                                        value={formValues.supplier_gst_number ?? ""}
-                                        onChange={(e) => handleFormFieldChange("supplier_gst_number", e.target.value)}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-
                                 {/* SECTION 1: RAW MATERIAL DETAILS */}
                                 <div className="general-section-card">
                                   <div className="general-card-header">
@@ -6651,24 +8213,35 @@ async function handleDeleteSelected() {
                                     </span>
                                   </div>
 
-                                  {/* SELECT RAW MATERIAL TYPE: RAW MATERIAL OR OTHER */}
+                                  {/* SELECT ITEM TYPE: RAW MATERIAL, PRODUCT, OTHER */}
                                   <div className="rm-type-selector-card">
                                     <div className="rm-type-header">
                                       <div className="rm-type-label-wrap">
-                                        <span className="rm-type-title">Select Raw Material Type:</span>
+                                        <span className="rm-type-title">Select Item Type:</span>
                                         <span className="rm-type-required">*</span>
                                       </div>
-                                      <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Raw Material Type">
+                                      <div className="rm-type-pill-toggle" role="radiogroup" aria-label="Select Item Type">
                                         <button
                                           type="button"
                                           role="radio"
-                                          aria-checked={formValues.raw_material_type !== "other"}
-                                          className={`rm-type-pill-btn ${formValues.raw_material_type !== "other" ? "active" : ""}`}
+                                          aria-checked={formValues.raw_material_type === "raw_material" || (!formValues.raw_material_type || (formValues.raw_material_type !== "product" && formValues.raw_material_type !== "other"))}
+                                          className={`rm-type-pill-btn ${formValues.raw_material_type === "raw_material" || (!formValues.raw_material_type || (formValues.raw_material_type !== "product" && formValues.raw_material_type !== "other")) ? "active" : ""}`}
                                           onClick={() => handleRawMaterialTypeSelect("raw_material")}
                                         >
                                           <span className="rm-type-pill-icon">📦</span>
                                           <span>Raw Material</span>
-                                          {formValues.raw_material_type !== "other" && <span className="rm-type-check">✓</span>}
+                                          {(formValues.raw_material_type === "raw_material" || (!formValues.raw_material_type || (formValues.raw_material_type !== "product" && formValues.raw_material_type !== "other"))) && <span className="rm-type-check">✓</span>}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          role="radio"
+                                          aria-checked={formValues.raw_material_type === "product"}
+                                          className={`rm-type-pill-btn product-mode ${formValues.raw_material_type === "product" ? "active" : ""}`}
+                                          onClick={() => handleRawMaterialTypeSelect("product")}
+                                        >
+                                          <span className="rm-type-pill-icon">⚙️</span>
+                                          <span>Product</span>
+                                          {formValues.raw_material_type === "product" && <span className="rm-type-check">✓</span>}
                                         </button>
                                         <button
                                           type="button"
@@ -6683,15 +8256,37 @@ async function handleDeleteSelected() {
                                         </button>
                                       </div>
                                       <span className="rm-type-badge-hint">
-                                        {formValues.raw_material_type !== "other"
-                                          ? "List of raw materials is displayed below and can be searched"
-                                          : "Enter raw material name and all details directly as inputs"}
+                                        {formValues.raw_material_type === "product"
+                                          ? "Search and select a product from the list below, then enter details & invoice value in the table"
+                                          : formValues.raw_material_type === "other"
+                                          ? "Enter item name and all details directly as inputs"
+                                          : "List of raw materials is displayed below and can be searched"}
                                       </span>
                                     </div>
                                   </div>
 
-                                  {/* IF RAW MATERIAL: SEARCHABLE LIST OF RAW MATERIALS */}
-                                  {formValues.raw_material_type !== "other" ? (
+                                  {/* IF PRODUCT */}
+                                  {formValues.raw_material_type === "product" ? (
+                                    <div className="general-rm-picker-wrap">
+                                      <DailyInputProductPicker
+                                        products={lookupOptions.products || []}
+                                        selectedProductId={formValues.product_id || formValues.element_id}
+                                        selectedItemName={formValues.item}
+                                        onSelect={(selected) => {
+                                          handleDailyInputItemSelect({ type: "product", id: selected.id, item: selected });
+                                        }}
+                                        onDeselect={handleDailyInputItemDeselect}
+                                        onAddNewProduct={(searched) => handleOpenQuickAddProduct(searched)}
+                                        disabled={isSaving}
+                                        isLoading={lookupLoading.products}
+                                        error={lookupErrors.products}
+                                        onRetry={() => setLookupRequestVersion((v) => v + 1)}
+                                        hasError={Boolean(pageError && !formValues.item && !formValues.product_id)}
+                                        required={true}
+                                      />
+                                    </div>
+                                  ) : formValues.raw_material_type !== "other" ? (
+                                    /* IF RAW MATERIAL: SEARCHABLE LIST OF RAW MATERIALS */
                                     <div className="general-rm-picker-wrap">
                                       <DailyInputRawMaterialPicker
                                         rawMaterials={lookupOptions.rawMaterials || []}
@@ -6703,6 +8298,7 @@ async function handleDeleteSelected() {
                                           handleDailyInputItemSelect({ type: "raw_material", id: selected.id, item: selected });
                                         }}
                                         onDeselect={handleDailyInputItemDeselect}
+                                        onAddNewRawMaterial={(searched) => handleOpenQuickAddRawMaterial(searched)}
                                         disabled={isSaving}
                                         isLoading={lookupLoading.rawMaterials}
                                         error={lookupErrors.rawMaterials}
@@ -6899,161 +8495,375 @@ async function handleDeleteSelected() {
                                 {/* SECTION 2: RAW MATERIALS TABLE (JUST LIKE IN SUPPLIER TYPE) */}
                                 <div className="staged-raw-materials-section">
                                   <div className="staged-raw-materials-header">
-                                    <h3>Raw Materials Table ({stagedDailyInputs.length})</h3>
+                                    <h3>Items Table ({stagedDailyInputs.length})</h3>
                                     <span className="staged-hint">
-                                      Enter raw material name above, enter quantity, unit & rate below, then click "+ Add" to save into table.
+                                      Select item above, enter quantity below, then click "+ Add" to save into table.
                                     </span>
                                   </div>
                                   <div className="staged-table-wrapper">
                                     <table className="staged-table">
-                                      <colgroup>
-                                        <col style={{ width: "3.5%" }} />
-                                        <col style={{ width: "16%" }} />
-                                        <col style={{ width: "6.5%" }} />
-                                        <col style={{ width: "5%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "8%" }} />
-                                        <col style={{ width: "8%" }} />
-                                        <col style={{ width: "8%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "7.5%" }} />
-                                        <col style={{ width: "9.5%" }} />
-                                        <col style={{ width: "5.5%" }} />
-                                      </colgroup>
+                                      {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                        <colgroup>
+                                          <col style={{ width: "3.5%" }} />
+                                          <col style={{ width: "8%" }} />
+                                          <col style={{ width: "12%" }} />
+                                          <col style={{ width: "7%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "6%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "7.5%" }} />
+                                          <col style={{ width: "5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "8%" }} />
+                                          <col style={{ width: "10%" }} />
+                                          <col style={{ width: "10%" }} />
+                                        </colgroup>
+                                      ) : (
+                                        <colgroup>
+                                          <col style={{ width: "3.5%" }} />
+                                          <col style={{ width: "12%" }} />
+                                          <col style={{ width: "5.5%" }} />
+                                          <col style={{ width: "5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "6.5%" }} />
+                                          <col style={{ width: "7.5%" }} />
+                                          <col style={{ width: "11%" }} />
+                                          <col style={{ width: "10%" }} />
+                                        </colgroup>
+                                      )}
                                       <thead>
                                         <tr>
-                                          <th style={{ textAlign: "center" }} title="Row Number">#</th>
-                                          <th title="Name of Raw Material">Raw Material</th>
-                                          <th className="numeric-cell" title="Quantity">Qty</th>
-                                          <th title="Unit">Unit</th>
-                                          <th className="numeric-cell" title="Rate">Rate</th>
-                                          <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
-                                          <th className="numeric-cell" title="Discount Value">Disc Val</th>
-                                          <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
-                                          <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
-                                          <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
-                                          <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                          <th style={{ textAlign: "center" }} title="ID">ID</th>
+                                          {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                            <>
+                                              <th title="P.O.No / Batch No">P.O.No</th>
+                                              <th title="Name of Item">Item</th>
+                                              <th title="Sach Code">Sach</th>
+                                              <th title="Ls">Ls</th>
+                                              <th className="numeric-cell" title="Quantity">Qty</th>
+                                              <th title="Bin">Bin</th>
+                                              <th title="Boxes">Boxes</th>
+                                              <th title="Zach Code">Zach Code</th>
+                                              <th title="Unit">Unit</th>
+                                              <th title="HSN Code">HSN Code</th>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <th title="Name of Item">Item</th>
+                                              <th className="numeric-cell" title="Quantity">Qty</th>
+                                              <th title="Unit">Unit</th>
+                                              <th className="numeric-cell" title="Rate">Rate</th>
+                                              <th className="numeric-cell" title="Basic Value = Quantity × Rate">Basic Val</th>
+                                              <th className="numeric-cell" title="Discount Value">Disc Val</th>
+                                              <th className="numeric-cell" title="Taxable Value = Basic Value - Discount Value">Taxable Val</th>
+                                              <th className="numeric-cell" title="CGST Amount">CGST Amt</th>
+                                              <th className="numeric-cell" title="SGST Amount">SGST Amt</th>
+                                              <th className="numeric-cell" title="IGST Amount">IGST Amt</th>
+                                            </>
+                                          )}
                                           <th className="numeric-cell" title="Invoice Value">Invoice Val</th>
+                                          <th title="Remarks">Remarks</th>
                                           <th style={{ textAlign: "center" }} title="Action">Action</th>
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {stagedDailyInputs.map((row, idx) => (
-                                          <tr key={row._tempId} className="staged-saved-row">
-                                            <td style={{ textAlign: "center" }}>{idx + 1}</td>
-                                            <td className="staged-item-name" title={row.item || "—"}>{row.item || "—"}</td>
-                                            <td className="numeric-cell">{row.quantity}</td>
-                                            <td>{row.unit || "—"}</td>
-                                            <td className="numeric-cell">₹{Number(row.rate || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.basic_value || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.discount_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.cgst_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.ut_sgst_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell">₹{Number(row.igst_amount || 0).toFixed(2)}</td>
-                                            <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
-                                            <td className="staged-actions-cell" style={{ textAlign: "center" }}>
-                                              <button
-                                                type="button"
-                                                className="staged-action-btn edit-staged-btn"
-                                                onClick={() => handleEditStagedItem(idx)}
-                                                title="Edit this item"
-                                              >
-                                                ✎
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="staged-action-btn delete-staged-btn"
-                                                onClick={() => handleDeleteStagedItem(idx)}
-                                                title="Remove this item"
-                                              >
-                                                ✕
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        ))}
+                                        {stagedDailyInputs.map((row, idx) => {
+                                          const isRowProduct = row.type === "product" || row.type === "element" || row.raw_material_type === "product";
+                                          const isTableProduct = formValues.type === "product" || formValues.raw_material_type === "product";
+                                          return (
+                                            <tr key={row._tempId} className="staged-saved-row">
+                                              <td style={{ textAlign: "center" }}>{idx + 1}</td>
+                                              {isTableProduct ? (
+                                                <>
+                                                  <td>{row.po_batch_no || "—"}</td>
+                                                  <td className="staged-item-name" title={row.item || "—"}>
+                                                    {row.item || "—"}
+                                                    {isRowProduct && (
+                                                      <span style={{ marginLeft: "6px", fontSize: "10px", padding: "1px 5px", background: "#ede9fe", color: "#6d28d9", borderRadius: "4px", border: "1px solid #c4b5fd" }}>
+                                                        Product
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td>{row.sach_code || "—"}</td>
+                                                  <td>{row.ls || "—"}</td>
+                                                  <td className="numeric-cell">{row.quantity}</td>
+                                                  <td>{row.bin || "—"}</td>
+                                                  <td>{row.boxes || "—"}</td>
+                                                  <td>{row.zach_code || "—"}</td>
+                                                  <td>{row.unit || "—"}</td>
+                                                  <td>{row.hsn_code || "—"}</td>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <td className="staged-item-name" title={row.item || "—"}>
+                                                    {row.item || "—"}
+                                                    {isRowProduct && (
+                                                      <span style={{ marginLeft: "6px", fontSize: "10px", padding: "1px 5px", background: "#ede9fe", color: "#6d28d9", borderRadius: "4px", border: "1px solid #c4b5fd" }}>
+                                                        Product
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td className="numeric-cell">{row.quantity}</td>
+                                                  <td>{row.unit || "—"}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.rate || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.basic_value || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.discount_amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.cgst_amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.ut_sgst_amount || 0).toFixed(2)}`}</td>
+                                                  <td className="numeric-cell">{isRowProduct ? "—" : `₹${Number(row.igst_amount || 0).toFixed(2)}`}</td>
+                                                </>
+                                              )}
+                                              <td className="numeric-cell staged-total-cell">₹{Number(row.total_amount || 0).toFixed(2)}</td>
+                                              <td title={row.remarks || "—"}>{row.remarks || "—"}</td>
+                                              <td className="staged-actions-cell" style={{ textAlign: "center" }}>
+                                                <div className="staged-actions-wrap">
+                                                  <button
+                                                    type="button"
+                                                    className="staged-action-btn edit-staged-btn"
+                                                    onClick={() => handleEditStagedItem(idx)}
+                                                    title="Edit this item"
+                                                  >
+                                                    Edit
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    className="staged-action-btn delete-staged-btn"
+                                                    onClick={() => handleDeleteStagedItem(idx)}
+                                                    title="Delete this item"
+                                                  >
+                                                    Delete
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
 
                                         <tr className="table-active-input-row">
                                           <td style={{ textAlign: "center", fontWeight: "700", color: "#64748b" }}>
                                             {stagedDailyInputs.length + 1}
                                           </td>
-                                          <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter raw material name above" : "Select raw material from above")}>
-                                            {(formValues.material_name || formValues.item) ? (
-                                              <div className="table-active-item-badge">
-                                                <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
-                                              </div>
-                                            ) : (
-                                              <div className="table-active-item-placeholder">
-                                                {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
-                                              </div>
-                                            )}
-                                          </td>
-                                          <td className="numeric-cell">
-                                            <input
-                                              type="number"
-                                              step="any"
-                                              min="0.0001"
-                                              placeholder="0.00"
-                                              className="table-input table-qty-input numeric-input"
-                                              value={formValues.quantity ?? ""}
-                                              onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
-                                            />
-                                          </td>
+                                          {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                            <>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="P.O.No"
+                                                  className="table-input"
+                                                  value={formValues.po_batch_no ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("po_batch_no", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter name above" : "Select item from above")}>
+                                                {(formValues.material_name || formValues.item) ? (
+                                                  <div className="table-active-item-badge">
+                                                    <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
+                                                    <span style={{ marginLeft: "5px", fontSize: "10px", padding: "1px 4px", background: "#ede9fe", color: "#6d28d9", borderRadius: "3px" }}>
+                                                      Product
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="table-active-item-placeholder">
+                                                    {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Sach"
+                                                  className="table-input"
+                                                  value={formValues.sach_code ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("sach_code", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Ls"
+                                                  className="table-input"
+                                                  value={formValues.ls ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("ls", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="any"
+                                                  min="0.0001"
+                                                  placeholder="0.00"
+                                                  className="table-input table-qty-input numeric-input"
+                                                  value={formValues.quantity ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Bin"
+                                                  className="table-input"
+                                                  value={formValues.bin ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("bin", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Boxes"
+                                                  className="table-input"
+                                                  value={formValues.boxes ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("boxes", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Zach Code"
+                                                  className="table-input"
+                                                  value={formValues.zach_code ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("zach_code", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <select
+                                                  className="table-input table-unit-select"
+                                                  value={formValues.unit || "num"}
+                                                  onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                                >
+                                                  <option value="num">num</option>
+                                                  <option value="kg">kg</option>
+                                                  <option value="litre">litre</option>
+                                                  <option value="mtrs">mtrs</option>
+                                                  <option value="other">other</option>
+                                                </select>
+                                                {formValues.unit === "other" && (
+                                                  <input
+                                                    type="text"
+                                                    placeholder="Specify unit"
+                                                    className="table-input"
+                                                    style={{ marginTop: "4px" }}
+                                                    value={formValues.unit_other || ""}
+                                                    onChange={(e) => handleFormFieldChange("unit_other", e.target.value)}
+                                                  />
+                                                )}
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="text"
+                                                  placeholder="HSN Code"
+                                                  className="table-input"
+                                                  value={formValues.hsn_code ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("hsn_code", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="0.01"
+                                                  min="0"
+                                                  placeholder="0.00"
+                                                  className="table-input numeric-input"
+                                                  value={formValues.total_amount ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("total_amount", e.target.value)}
+                                                />
+                                              </td>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <td className="table-item-name-cell" title={formValues.material_name || formValues.item || (formValues.raw_material_type === "other" ? "Enter name above" : "Select item from above")}>
+                                                {(formValues.material_name || formValues.item) ? (
+                                                  <div className="table-active-item-badge">
+                                                    <span className="table-active-item-text">{formValues.material_name || formValues.item}</span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="table-active-item-placeholder">
+                                                    {formValues.raw_material_type === "other" ? "(Enter name above)" : "(Select above)"}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="any"
+                                                  min="0.0001"
+                                                  placeholder="0.00"
+                                                  className="table-input table-qty-input numeric-input"
+                                                  value={formValues.quantity ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("quantity", e.target.value)}
+                                                />
+                                              </td>
+                                              <td>
+                                                <select
+                                                  className="table-input table-unit-select"
+                                                  value={formValues.unit || "num"}
+                                                  onChange={(e) => handleFormFieldChange("unit", e.target.value)}
+                                                >
+                                                  <option value="num">num</option>
+                                                  <option value="kg">kg</option>
+                                                  <option value="litre">litre</option>
+                                                  <option value="mtrs">mtrs</option>
+                                                  <option value="other">other</option>
+                                                </select>
+                                                {formValues.unit === "other" && (
+                                                  <input
+                                                    type="text"
+                                                    placeholder="Specify unit"
+                                                    className="table-input"
+                                                    style={{ marginTop: "4px" }}
+                                                    value={formValues.unit_other || ""}
+                                                    onChange={(e) => handleFormFieldChange("unit_other", e.target.value)}
+                                                  />
+                                                )}
+                                              </td>
+                                              <td className="numeric-cell">
+                                                <input
+                                                  type="number"
+                                                  step="0.01"
+                                                  min="0"
+                                                  placeholder="0.00"
+                                                  className="table-input table-rate-input numeric-input"
+                                                  value={formValues.rate ?? ""}
+                                                  onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                                />
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.basic_value || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.discount_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.cgst_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.ut_sgst_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell">
+                                                {`₹${Number(formValues.igst_amount || 0).toFixed(2)}`}
+                                              </td>
+                                              <td className="numeric-cell table-calculated-cell staged-total-cell">
+                                                {`₹${Number(formValues.total_amount || 0).toFixed(2)}`}
+                                              </td>
+                                            </>
+                                          )}
                                           <td>
-                                            <select
-                                              className="table-input table-unit-select"
-                                              value={formValues.unit || "num"}
-                                              onChange={(e) => handleFormFieldChange("unit", e.target.value)}
-                                            >
-                                              <option value="num">num</option>
-                                              <option value="kg">kg</option>
-                                              <option value="litre">litre</option>
-                                              <option value="mtrs">mtrs</option>
-                                              <option value="other">other</option>
-                                            </select>
-                                            {formValues.unit === "other" && (
-                                              <input
-                                                type="text"
-                                                placeholder="Specify unit"
-                                                className="table-input"
-                                                style={{ marginTop: "4px" }}
-                                                value={formValues.unit_other || ""}
-                                                onChange={(e) => handleFormFieldChange("unit_other", e.target.value)}
-                                              />
-                                            )}
-                                          </td>
-                                          <td className="numeric-cell">
                                             <input
-                                              type="number"
-                                              step="0.01"
-                                              min="0"
-                                              placeholder="0.00"
-                                              className="table-input table-rate-input numeric-input"
-                                              value={formValues.rate ?? ""}
-                                              onChange={(e) => handleFormFieldChange("rate", e.target.value)}
+                                              type="text"
+                                              placeholder="Remarks"
+                                              className="table-input"
+                                              value={formValues.remarks ?? ""}
+                                              onChange={(e) => handleFormFieldChange("remarks", e.target.value)}
                                             />
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.basic_value || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.discount_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.cgst_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.ut_sgst_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell">
-                                            ₹{Number(formValues.igst_amount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="numeric-cell table-calculated-cell staged-total-cell">
-                                            ₹{Number(formValues.total_amount || 0).toFixed(2)}
                                           </td>
                                           <td style={{ textAlign: "center" }}>
                                             {editingRecord ? (
@@ -7063,7 +8873,7 @@ async function handleDeleteSelected() {
                                                 type="button"
                                                 className="table-btn-add-more"
                                                 onClick={handleAddMoreDailyInput}
-                                                title="Add this raw material row to the table"
+                                                title="Add this item row to the table"
                                               >
                                                 + Add
                                               </button>
@@ -7076,35 +8886,51 @@ async function handleDeleteSelected() {
                                           <td colSpan={2}>
                                             <strong>Total ({stagedDailyInputs.length})</strong>
                                           </td>
-                                          <td className="numeric-cell">
-                                            <strong>
-                                              {Number.isInteger(stagedTotals.quantity)
-                                                ? String(stagedTotals.quantity)
-                                                : String(Number(stagedTotals.quantity.toFixed(4)))}
-                                            </strong>
-                                          </td>
-                                          <td>—</td>
-                                          <td>—</td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
-                                          <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                          {(formValues.type === "product" || formValues.raw_material_type === "product") ? (
+                                            <>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td className="numeric-cell">
+                                                <strong>
+                                                  {Number.isInteger(stagedTotals.quantity)
+                                                    ? String(stagedTotals.quantity)
+                                                    : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                                </strong>
+                                              </td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <td className="numeric-cell">
+                                                <strong>
+                                                  {Number.isInteger(stagedTotals.quantity)
+                                                    ? String(stagedTotals.quantity)
+                                                    : String(Number(stagedTotals.quantity.toFixed(4)))}
+                                                </strong>
+                                              </td>
+                                              <td>—</td>
+                                              <td>—</td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.basic_value.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.discount_amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.cgst_amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.ut_sgst_amount.toFixed(2)}</strong></td>
+                                              <td className="numeric-cell"><strong>₹{stagedTotals.igst_amount.toFixed(2)}</strong></td>
+                                            </>
+                                          )}
                                           <td className="numeric-cell staged-total-cell"><strong>₹{stagedTotals.total_amount.toFixed(2)}</strong></td>
+                                          <td>—</td>
                                           <td>—</td>
                                         </tr>
                                       </tfoot>
                                     </table>
                                   </div>
                                 </div>
-
-                                {/* SECTION 3: REMARKS */}
-                                {remarksFields.length > 0 && (
-                                  <div className="remarks-fields-row">
-                                    {remarksFields.map(renderField)}
-                                  </div>
-                                )}
                               </div>
                             )}
                           </>
@@ -7217,8 +9043,7 @@ async function handleDeleteSelected() {
                           <>
                             Do you want to save the {productSaveConfirm.type}{" "}
                             <strong className="product-confirm-highlight">"{productSaveConfirm.name}"</strong>{" "}
-                            with Zach Code{" "}
-                            <strong className="product-confirm-highlight">"{productSaveConfirm.zachCode}"</strong>?
+                            (with Zach Code)?
                           </>
                         ) : (
                           <>
@@ -7241,10 +9066,22 @@ async function handleDeleteSelected() {
                           {productSaveConfirm.type}
                         </span>
                       </div>
-                      {productSaveConfirm.isZachCode && productSaveConfirm.zachCode && (
+                      {productSaveConfirm.ls && (
                         <div className="product-confirm-cell">
-                          <span className="confirm-meta-label">Zach Code</span>
-                          <span className="confirm-meta-value zach-code-value">{productSaveConfirm.zachCode}</span>
+                          <span className="confirm-meta-label">Ls</span>
+                          <span className="confirm-meta-value">{productSaveConfirm.ls}</span>
+                        </div>
+                      )}
+                      {productSaveConfirm.hsnCode && (
+                        <div className="product-confirm-cell">
+                          <span className="confirm-meta-label">HSN Code</span>
+                          <span className="confirm-meta-value">{productSaveConfirm.hsnCode}</span>
+                        </div>
+                      )}
+                      {productSaveConfirm.sachCode && (
+                        <div className="product-confirm-cell">
+                          <span className="confirm-meta-label">Sach Code</span>
+                          <span className="confirm-meta-value">{productSaveConfirm.sachCode}</span>
                         </div>
                       )}
                       {productSaveConfirm.elementName && (
@@ -7360,6 +9197,46 @@ async function handleDeleteSelected() {
                     )}
 
                     <form className="quick-rm-form" onSubmit={handleSaveQuickRawMaterial}>
+                      <div className="form-field-group product-mode-group field-wide">
+                        <div className="product-mode-radios">
+                          <label className={`product-mode-radio-label ${quickAddRawMaterialModal.zach_mode === "with_zach_code" ? "selected" : ""}`}>
+                            <input
+                              type="radio"
+                              name="quick_rm_zach_mode"
+                              value="with_zach_code"
+                              checked={quickAddRawMaterialModal.zach_mode === "with_zach_code"}
+                              onChange={() =>
+                                setQuickAddRawMaterialModal((prev) => ({
+                                  ...prev,
+                                  zach_mode: "with_zach_code",
+                                }))
+                              }
+                              disabled={isSavingQuickRm}
+                            />
+                            <span className="radio-custom" />
+                            <span className="radio-text">zach no</span>
+                          </label>
+                          <label className={`product-mode-radio-label ${(quickAddRawMaterialModal.zach_mode || "without_zach_code") === "without_zach_code" ? "selected" : ""}`}>
+                            <input
+                              type="radio"
+                              name="quick_rm_zach_mode"
+                              value="without_zach_code"
+                              checked={(quickAddRawMaterialModal.zach_mode || "without_zach_code") === "without_zach_code"}
+                              onChange={() =>
+                                setQuickAddRawMaterialModal((prev) => ({
+                                  ...prev,
+                                  zach_mode: "without_zach_code",
+                                  zach_code: "",
+                                }))
+                              }
+                              disabled={isSavingQuickRm}
+                            />
+                            <span className="radio-custom" />
+                            <span className="radio-text">no zach no</span>
+                          </label>
+                        </div>
+                      </div>
+
                       <div className="quick-rm-fields-grid">
                         <label className="quick-rm-field field-wide" htmlFor="qrm-name">
                           Material Name *
@@ -7377,6 +9254,43 @@ async function handleDeleteSelected() {
                             }
                             placeholder="e.g. Copper Wire 0.5mm"
                             autoFocus
+                          />
+                        </label>
+
+                        {quickAddRawMaterialModal.zach_mode === "with_zach_code" && (
+                          <label className="quick-rm-field" htmlFor="qrm-zach">
+                            Zach No *
+                            <input
+                              id="qrm-zach"
+                              type="text"
+                              required
+                              disabled={isSavingQuickRm}
+                              value={quickAddRawMaterialModal.zach_code || ""}
+                              onChange={(e) =>
+                                setQuickAddRawMaterialModal((prev) => ({
+                                  ...prev,
+                                  zach_code: e.target.value,
+                                }))
+                              }
+                              placeholder="Enter Zach No"
+                            />
+                          </label>
+                        )}
+
+                        <label className="quick-rm-field" htmlFor="qrm-details">
+                          Details
+                          <input
+                            id="qrm-details"
+                            type="text"
+                            disabled={isSavingQuickRm}
+                            value={quickAddRawMaterialModal.details || ""}
+                            onChange={(e) =>
+                              setQuickAddRawMaterialModal((prev) => ({
+                                ...prev,
+                                details: e.target.value,
+                              }))
+                            }
+                            placeholder="Enter details"
                           />
                         </label>
 
@@ -7711,25 +9625,56 @@ async function handleDeleteSelected() {
                           </label>
                         )}
 
-                        {quickAddProductModal.product_mode === "with_zach_code" && (
-                          <label className="quick-rm-field" htmlFor="qprd-zach">
-                            Zach Code *
-                            <input
-                              id="qprd-zach"
-                              type="text"
-                              required
-                              disabled={isSavingQuickPrd}
-                              value={quickAddProductModal.zach_code}
-                              onChange={(e) =>
-                                setQuickAddProductModal((prev) => ({
-                                  ...prev,
-                                  zach_code: e.target.value,
-                                }))
-                              }
-                              placeholder="e.g. ZACH-1029"
-                            />
-                          </label>
-                        )}
+                        <label className="quick-rm-field" htmlFor="qprd-hsn">
+                          HSN Code
+                          <input
+                            id="qprd-hsn"
+                            type="text"
+                            disabled={isSavingQuickPrd}
+                            value={quickAddProductModal.hsn_code || ""}
+                            onChange={(e) =>
+                              setQuickAddProductModal((prev) => ({
+                                ...prev,
+                                hsn_code: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. 8532"
+                          />
+                        </label>
+
+                        <label className="quick-rm-field" htmlFor="qprd-ls">
+                          Ls
+                          <input
+                            id="qprd-ls"
+                            type="text"
+                            disabled={isSavingQuickPrd}
+                            value={quickAddProductModal.ls || ""}
+                            onChange={(e) =>
+                              setQuickAddProductModal((prev) => ({
+                                ...prev,
+                                ls: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. LS-01"
+                          />
+                        </label>
+
+                        <label className="quick-rm-field" htmlFor="qprd-sach">
+                          Sach Code
+                          <input
+                            id="qprd-sach"
+                            type="text"
+                            disabled={isSavingQuickPrd}
+                            value={quickAddProductModal.sach_code || ""}
+                            onChange={(e) =>
+                              setQuickAddProductModal((prev) => ({
+                                ...prev,
+                                sach_code: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. SACH-01"
+                          />
+                        </label>
 
                         {quickAddProductModal.product_mode === "without_zach_code" &&
                           quickAddProductModal.type === "welded element" && (
@@ -7842,13 +9787,13 @@ async function handleDeleteSelected() {
                     role="dialog"
                   >
                     <div className="quick-rm-header">
-                      <div className="quick-rm-icon-wrap" style={{ background: "rgba(14, 165, 233, 0.15)", color: "#0284c7" }}>
+                      <div className="quick-rm-icon-wrap">
                         <span className="quick-rm-icon">🏢</span>
                       </div>
                       <div className="quick-rm-header-text">
                         <h2 id="quick-sup-title">Add Supplier</h2>
                         <p className="quick-rm-sub">
-                          Enter details to add this supplier. After saving, you will return directly to your form with this supplier selected.
+                          Enter details to add this supplier. After saving, you will return directly to Daily Input with this supplier selected.
                         </p>
                       </div>
                       <button
@@ -7856,7 +9801,7 @@ async function handleDeleteSelected() {
                         className="quick-rm-close-btn"
                         disabled={isSavingQuickSup}
                         onClick={() => setQuickAddSupplierModal(null)}
-                        aria-label="Close"
+                        title="Cancel and return to Daily Input"
                       >
                         ×
                       </button>
@@ -7868,11 +9813,12 @@ async function handleDeleteSelected() {
                       </p>
                     )}
 
-                    <form onSubmit={handleSaveQuickSupplier} className="quick-rm-form">
-                      <div className="quick-rm-grid">
-                        <label className="field-wide">
-                          <span className="field-label-text">Company Name *</span>
+                    <form className="quick-rm-form" onSubmit={handleSaveQuickSupplier}>
+                      <div className="quick-rm-fields-grid">
+                        <label className="quick-rm-field field-wide" htmlFor="qsup-company">
+                          Company Name *
                           <input
+                            id="qsup-company"
                             type="text"
                             required
                             disabled={isSavingQuickSup}
@@ -7888,9 +9834,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label>
-                          <span className="field-label-text">Contact Person</span>
+                        <label className="quick-rm-field" htmlFor="qsup-contact">
+                          Contact Person
                           <input
+                            id="qsup-contact"
                             type="text"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.contact_person}
@@ -7904,9 +9851,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label>
-                          <span className="field-label-text">Phone</span>
+                        <label className="quick-rm-field" htmlFor="qsup-phone">
+                          Phone
                           <input
+                            id="qsup-phone"
                             type="text"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.phone}
@@ -7920,9 +9868,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label>
-                          <span className="field-label-text">Email</span>
+                        <label className="quick-rm-field" htmlFor="qsup-email">
+                          Email
                           <input
+                            id="qsup-email"
                             type="email"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.email}
@@ -7936,9 +9885,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label>
-                          <span className="field-label-text">City</span>
+                        <label className="quick-rm-field" htmlFor="qsup-city">
+                          City
                           <input
+                            id="qsup-city"
                             type="text"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.city}
@@ -7952,9 +9902,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label>
-                          <span className="field-label-text">State</span>
+                        <label className="quick-rm-field" htmlFor="qsup-state">
+                          State
                           <select
+                            id="qsup-state"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.state}
                             onChange={(e) =>
@@ -7973,9 +9924,10 @@ async function handleDeleteSelected() {
                           </select>
                         </label>
 
-                        <label>
-                          <span className="field-label-text">Pincode</span>
+                        <label className="quick-rm-field" htmlFor="qsup-pincode">
+                          Pincode
                           <input
+                            id="qsup-pincode"
                             type="text"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.pincode}
@@ -7989,9 +9941,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label>
-                          <span className="field-label-text">GST Number</span>
+                        <label className="quick-rm-field" htmlFor="qsup-gst">
+                          GST Number
                           <input
+                            id="qsup-gst"
                             type="text"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.gst_number}
@@ -8005,9 +9958,10 @@ async function handleDeleteSelected() {
                           />
                         </label>
 
-                        <label className="field-wide">
-                          <span className="field-label-text">Address</span>
+                        <label className="quick-rm-field field-wide" htmlFor="qsup-address">
+                          Address
                           <input
+                            id="qsup-address"
                             type="text"
                             disabled={isSavingQuickSup}
                             value={quickAddSupplierModal.address}
@@ -8029,14 +9983,14 @@ async function handleDeleteSelected() {
                           onClick={() => setQuickAddSupplierModal(null)}
                           type="button"
                         >
-                          Cancel
+                          Cancel &amp; Return to Daily Input
                         </button>
                         <button
                           className="primary-action"
                           disabled={isSavingQuickSup}
                           type="submit"
                         >
-                          {isSavingQuickSup ? "Saving Supplier…" : "Save & Select Supplier"}
+                          {isSavingQuickSup ? "Saving Supplier…" : "Save & Select in Daily Input"}
                         </button>
                       </div>
                     </form>
@@ -8203,7 +10157,17 @@ async function handleDeleteSelected() {
       </th>
 
       {/* Existing column headings */}
-      {activeConfig.columns.map(([, label]) => (
+      {(activeSection === "dailyDispatch" && dailyDispatchType === "Job work" && filteredRecords.length > 0
+        ? activeConfig.columns.filter(([key]) =>
+            filteredRecords.some((rec) => {
+              const rawVal = getRecordFieldValue(rec, key);
+              const cellValue = getRelatedCompanyName(key, rawVal, rec) ?? rawVal;
+              const formatted = String(formatCell(cellValue) ?? "").trim();
+              return formatted !== "" && formatted !== "-" && formatted !== "—" && formatted.toLowerCase() !== "null";
+            })
+          )
+        : activeConfig.columns
+      ).map(([, label]) => (
         <th key={label}>{label}</th>
       ))}
 
@@ -8223,12 +10187,29 @@ async function handleDeleteSelected() {
         />
       </td>
 
-                          {activeConfig.columns.map(([key]) => {
+                          {(activeSection === "dailyDispatch" && dailyDispatchType === "Job work" && filteredRecords.length > 0
+                            ? activeConfig.columns.filter(([key]) =>
+                                filteredRecords.some((rec) => {
+                                  const rawVal = getRecordFieldValue(rec, key);
+                                  const cellValue = getRelatedCompanyName(key, rawVal, rec) ?? rawVal;
+                                  const formatted = String(formatCell(cellValue) ?? "").trim();
+                                  return formatted !== "" && formatted !== "-" && formatted !== "—" && formatted.toLowerCase() !== "null";
+                                })
+                              )
+                            : activeConfig.columns
+                          ).map(([key]) => {
                             const rawVal = getRecordFieldValue(record, key);
                             const cellValue = getRelatedCompanyName(key, rawVal, record) ?? rawVal;
+                            const formatted = formatCell(cellValue);
+                            const displayCell =
+                              activeSection === "dailyDispatch" &&
+                              dailyDispatchType === "Job work" &&
+                              (formatted === "-" || formatted === "—")
+                                ? ""
+                                : formatted;
                             return (
                               <td key={key} title={typeof cellValue === "string" ? cellValue : undefined}>
-                                {formatCell(cellValue)}
+                                {displayCell}
                               </td>
                             );
                           })}
@@ -8252,6 +10233,9 @@ async function handleDeleteSelected() {
                                     } else if (field.name === "product_mode") {
                                       const hasZach = Boolean(record.has_zach_code || record.zach_code);
                                       editValues.product_mode = hasZach ? "with_zach_code" : "without_zach_code";
+                                    } else if (field.name === "zach_mode") {
+                                      const hasZach = Boolean(record.has_zach_code || record.zach_code);
+                                      editValues.zach_mode = hasZach ? "with_zach_code" : "without_zach_code";
                                     } else if (field.name === "zach_code") {
                                       editValues.zach_code = record.zach_code ?? "";
                                     } else if (field.name === "raw_material_ids" || field.name === "raw_materials" || field.type === "multiRawMaterial") {
@@ -8294,52 +10278,90 @@ async function handleDeleteSelected() {
                                     }
                                   }
 
+                                  if (activeSection === "rawMaterials") {
+                                    const hasZach = Boolean(record.has_zach_code || record.zach_code);
+                                    editValues.zach_mode = hasZach ? "with_zach_code" : "without_zach_code";
+                                    editValues.zach_code = record.zach_code ?? "";
+                                    editValues.details = record.details ?? "";
+                                  }
+
                                   if (activeSection === "products") {
                                     const hasZach = Boolean(record.has_zach_code || record.zach_code);
                                     editValues.product_mode = hasZach ? "with_zach_code" : "without_zach_code";
-                                    editValues.zach_code = record.zach_code ?? "";
+                                    editValues.ls = record.ls ?? "";
+                                    editValues.hsn_code = record.hsn_code ?? "";
+                                    editValues.sach_code = record.sach_code ?? "";
                                   }
 
                                   if (activeSection === "dailyInputs") {
                                     const suppType = record.supplier_type || (record.supplier_id ? "supplier" : "general");
                                     editValues.supplier_type = suppType;
                                     editValues.type = record.type ?? "raw_material";
+                                    const isProd = record.type === "product" || record.type === "element" || Boolean(record.product_id);
+                                    editValues.raw_material_type = isProd ? "product" : (record.type === "other" ? "other" : "raw_material");
                                     editValues.raw_material_id = record.raw_material_id ?? "";
-                                    editValues.product_id = record.product_id ?? "";
+                                    editValues.product_id = record.product_id || (record.type === "element" ? record.element_id : "") || "";
                                     editValues.element_id = record.element_id ?? "";
                                     editValues.supplier_id = record.supplier_id ?? "";
                                     editValues.material_name = record.item || "";
                                     editValues.item = record.item || "";
-                                    if (record.cgst_percent !== undefined && record.cgst_percent !== null) {
-                                      editValues.cgst_percent = record.cgst_percent;
-                                    }
-                                    if (record.ut_sgst_percent !== undefined && record.ut_sgst_percent !== null) {
-                                      editValues.ut_sgst_percent = record.ut_sgst_percent;
-                                    }
-                                    if (record.igst_percent !== undefined && record.igst_percent !== null) {
-                                      editValues.igst_percent = record.igst_percent;
-                                    }
-                                    if (suppType === "general") {
-                                      editValues.supplier_company_name = record.supplier_company_name || record.other_details?.supplier_company_name || record.other_details?.company_name || "";
-                                      editValues.supplier_contact_person = record.supplier_contact_person || record.other_details?.supplier_contact_person || record.other_details?.contact_person || "";
-                                      editValues.supplier_phone = record.supplier_phone || record.other_details?.supplier_phone || record.other_details?.phone || "";
-                                      editValues.supplier_email = record.supplier_email || record.other_details?.supplier_email || record.other_details?.email || "";
-                                      editValues.supplier_address = record.supplier_address || record.other_details?.supplier_address || record.other_details?.address || "";
-                                      editValues.supplier_city = record.supplier_city || record.other_details?.supplier_city || record.other_details?.city || "";
-                                      editValues.supplier_state = record.supplier_state || record.other_details?.supplier_state || record.other_details?.state || "";
-                                      editValues.supplier_pincode = record.supplier_pincode || record.other_details?.supplier_pincode || record.other_details?.pincode || "";
-                                      editValues.supplier_gst_number = record.supplier_gst_number || record.other_details?.supplier_gst_number || record.other_details?.gst_number || "";
+                                    if (isProd) {
+                                      editValues.rate = 0;
+                                      editValues.basic_value = 0;
+                                      editValues.discount_percent = 0;
+                                      editValues.discount_amount = 0;
+                                      editValues.amount = 0;
+                                      editValues.cgst_percent = 0;
+                                      editValues.cgst_amount = 0;
+                                      editValues.ut_sgst_percent = 0;
+                                      editValues.ut_sgst_amount = 0;
+                                      editValues.igst_percent = 0;
+                                      editValues.igst_amount = 0;
+                                      editValues.total_amount = record.total_amount ?? "";
 
-                                      const matchedRm = lookupOptions.rawMaterials?.find(
-                                        (m) => String(m.id) === String(record.raw_material_id) || String(m.material_name || "").toLowerCase() === String(record.item || "").toLowerCase()
+                                      const matchedPrd = lookupOptions.products?.find(
+                                        (p) => String(p.id) === String(editValues.product_id || record.product_id || record.element_id) ||
+                                               String(p.name || "").trim().toLowerCase() === String(record.item || "").trim().toLowerCase()
                                       );
-                                      if (matchedRm) {
-                                        if (!editValues.hsn_code) editValues.hsn_code = matchedRm.hsn_code || "";
-                                        if (!editValues.unit) editValues.unit = matchedRm.unit || "num";
-                                        if (!editValues.rate) editValues.rate = matchedRm.rate || 0;
-                                        if (editValues.cgst_percent === undefined || editValues.cgst_percent === "") editValues.cgst_percent = matchedRm.cgst_percent || 0;
-                                        if (editValues.ut_sgst_percent === undefined || editValues.ut_sgst_percent === "") editValues.ut_sgst_percent = matchedRm.ut_sgst_percent || 0;
-                                        if (editValues.igst_percent === undefined || editValues.igst_percent === "") editValues.igst_percent = matchedRm.igst_percent || 0;
+                                      editValues.hsn_code = record.hsn_code || record.other_details?.hsn_code || matchedPrd?.hsn_code || "";
+                                      editValues.zach_code = record.zach_code || record.other_details?.zach_code || matchedPrd?.zach_code || "";
+                                      editValues.po_batch_no = record.po_batch_no || record.other_details?.po_batch_no || matchedPrd?.po_batch_no || "";
+                                      editValues.ls = record.ls || record.other_details?.ls || matchedPrd?.ls || "";
+                                      editValues.sach_code = record.sach_code || record.other_details?.sach_code || matchedPrd?.sach_code || "";
+                                      editValues.bin = record.bin || record.other_details?.bin || matchedPrd?.bin || "";
+                                      editValues.boxes = record.boxes || record.other_details?.boxes || matchedPrd?.boxes || "";
+                                    } else {
+                                      if (record.cgst_percent !== undefined && record.cgst_percent !== null) {
+                                        editValues.cgst_percent = record.cgst_percent;
+                                      }
+                                      if (record.ut_sgst_percent !== undefined && record.ut_sgst_percent !== null) {
+                                        editValues.ut_sgst_percent = record.ut_sgst_percent;
+                                      }
+                                      if (record.igst_percent !== undefined && record.igst_percent !== null) {
+                                        editValues.igst_percent = record.igst_percent;
+                                      }
+                                      if (suppType === "general") {
+                                        editValues.supplier_company_name = record.supplier_company_name || record.other_details?.supplier_company_name || record.other_details?.company_name || "";
+                                        editValues.supplier_contact_person = record.supplier_contact_person || record.other_details?.supplier_contact_person || record.other_details?.contact_person || "";
+                                        editValues.supplier_phone = record.supplier_phone || record.other_details?.supplier_phone || record.other_details?.phone || "";
+                                        editValues.supplier_email = record.supplier_email || record.other_details?.supplier_email || record.other_details?.email || "";
+                                        editValues.supplier_address = record.supplier_address || record.other_details?.supplier_address || record.other_details?.address || "";
+                                        editValues.supplier_city = record.supplier_city || record.other_details?.supplier_city || record.other_details?.city || "";
+                                        editValues.supplier_state = record.supplier_state || record.other_details?.supplier_state || record.other_details?.state || "";
+                                        editValues.supplier_pincode = record.supplier_pincode || record.other_details?.supplier_pincode || record.other_details?.pincode || "";
+                                        editValues.supplier_gst_number = record.supplier_gst_number || record.other_details?.supplier_gst_number || record.other_details?.gst_number || "";
+
+                                        const matchedRm = lookupOptions.rawMaterials?.find(
+                                          (m) => String(m.id) === String(record.raw_material_id) || String(m.material_name || "").toLowerCase() === String(record.item || "").toLowerCase()
+                                        );
+                                        if (matchedRm) {
+                                          if (!editValues.hsn_code) editValues.hsn_code = matchedRm.hsn_code || "";
+                                          if (!editValues.unit) editValues.unit = matchedRm.unit || "num";
+                                          if (!editValues.rate) editValues.rate = matchedRm.rate || 0;
+                                          if (editValues.cgst_percent === undefined || editValues.cgst_percent === "") editValues.cgst_percent = matchedRm.cgst_percent || 0;
+                                          if (editValues.ut_sgst_percent === undefined || editValues.ut_sgst_percent === "") editValues.ut_sgst_percent = matchedRm.ut_sgst_percent || 0;
+                                          if (editValues.igst_percent === undefined || editValues.igst_percent === "") editValues.igst_percent = matchedRm.igst_percent || 0;
+                                        }
                                       }
                                     }
                                   }
@@ -8355,7 +10377,31 @@ async function handleDeleteSelected() {
                                   );
 
                                   // Preserve daily input's own saved values without overwriting with master raw material / element
-                                  if (record.type === "raw_material" || record.type === "element") {
+                                  if (record.type === "product" || (record.type === "element" && editValues.raw_material_type === "product")) {
+                                    if (record.item) editValues.item = record.item;
+                                    if (record.unit) {
+                                      const stdUnits = ["num", "kg", "litre", "mtrs"];
+                                      if (stdUnits.includes(String(record.unit).toLowerCase())) {
+                                        editValues.unit = record.unit;
+                                        editValues.unit_other = "";
+                                      } else {
+                                        editValues.unit = "other";
+                                        editValues.unit_other = record.unit;
+                                      }
+                                    }
+                                    editValues.rate = 0;
+                                    editValues.basic_value = 0;
+                                    editValues.discount_percent = 0;
+                                    editValues.discount_amount = 0;
+                                    editValues.amount = 0;
+                                    editValues.cgst_percent = 0;
+                                    editValues.cgst_amount = 0;
+                                    editValues.ut_sgst_percent = 0;
+                                    editValues.ut_sgst_amount = 0;
+                                    editValues.igst_percent = 0;
+                                    editValues.igst_amount = 0;
+                                    editValues.total_amount = 0;
+                                  } else if (record.type === "raw_material" || record.type === "element") {
                                     if (record.item) editValues.item = record.item;
                                     if (record.unit) {
                                       const stdUnits = ["num", "kg", "litre", "mtrs"];
@@ -8451,6 +10497,10 @@ async function handleDeleteSelected() {
                                     } else if (record.amount && record.igst_amount) {
                                       editValues.igst_percent = Number(((Number(record.igst_amount) * 100) / Number(record.amount)).toFixed(2));
                                     }
+                                  }
+
+                                  if (activeSection === "costData") {
+                                    editValues = calculateCostDataBasicAutofill(editValues, "init");
                                   }
 
                                   setFormValues(editValues);

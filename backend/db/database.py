@@ -319,6 +319,12 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS welded_element_id INTEGER REFERENCES product(id) ON DELETE SET NULL",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150)",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS po_batch_no VARCHAR(100)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS ls VARCHAR(100)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(50)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS sach_code VARCHAR(100)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS bin VARCHAR(100)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS boxes VARCHAR(100)",
         "CREATE TABLE IF NOT EXISTS product_raw_material (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES product(id) ON DELETE CASCADE, raw_material_id INTEGER NOT NULL REFERENCES raw_material(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), CONSTRAINT uq_product_raw_material UNIQUE (product_id, raw_material_id))",
         "ALTER TABLE product_raw_material ADD COLUMN IF NOT EXISTS quantity NUMERIC(12, 4) DEFAULT 1",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS remarks TEXT",
@@ -339,6 +345,64 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_state VARCHAR(100)",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_pincode VARCHAR(20)",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS supplier_gst_number VARCHAR(80)",
+        "ALTER TABLE daily_input ALTER COLUMN hsn_code TYPE VARCHAR(50)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS po_batch_no VARCHAR(100)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS ls VARCHAR(100)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS sach_code VARCHAR(100)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS bin VARCHAR(100)",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS boxes VARCHAR(100)",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150)",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS details TEXT",
+        "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150)",
+        """
+        CREATE TABLE IF NOT EXISTS daily_dispatch (
+            id SERIAL PRIMARY KEY,
+            code VARCHAR(20) UNIQUE,
+            type VARCHAR(50),
+            "DC_no" VARCHAR(50),
+            "DC_date" DATE,
+            bill_no VARCHAR(50),
+            bill_date DATE,
+            item VARCHAR(150),
+            zach_code VARCHAR(150),
+            po_batch_no VARCHAR(100),
+            sach_code VARCHAR(100),
+            ls VARCHAR(100),
+            quantity NUMERIC(12, 4),
+            bin VARCHAR(100),
+            boxes VARCHAR(100),
+            unit VARCHAR(30),
+            hsn_code VARCHAR(50),
+            rate NUMERIC(12, 2) DEFAULT 0,
+            basic_value NUMERIC(12, 2) DEFAULT 0,
+            discount_percent NUMERIC(5, 2) DEFAULT 0,
+            discount_amount NUMERIC(12, 2) DEFAULT 0,
+            amount NUMERIC(12, 2) DEFAULT 0,
+            cgst_percent NUMERIC(5, 2) DEFAULT 0,
+            ut_sgst_percent NUMERIC(5, 2) DEFAULT 0,
+            igst_percent NUMERIC(5, 2) DEFAULT 0,
+            cgst_amount NUMERIC(12, 2) DEFAULT 0,
+            ut_sgst_amount NUMERIC(12, 2) DEFAULT 0,
+            igst_amount NUMERIC(12, 2) DEFAULT 0,
+            total_amount NUMERIC(12, 2) DEFAULT 0,
+            remarks TEXT,
+            other_details JSONB,
+            daily_input_id INTEGER REFERENCES daily_input(id) ON DELETE SET NULL,
+            product_id INTEGER REFERENCES product(id) ON DELETE SET NULL,
+            customer_id INTEGER REFERENCES customer(id) ON DELETE SET NULL,
+            supplier_id INTEGER REFERENCES supplier(id) ON DELETE SET NULL,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMPTZ NULL
+        )
+        """,
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_dc_no VARCHAR(50)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_dc_date DATE",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_quantity NUMERIC(12, 4)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS ok NUMERIC(12, 4)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS reject NUMERIC(12, 4)",
     ]
     for stmt in ddl_statements:
         try:
@@ -358,7 +422,7 @@ def initialize_database():
         raise RuntimeError("Set JWT_SECRET_KEY to at least 32 characters in .env")
 
     # Import models so Base.metadata is populated before create_all.
-    from models import CostData, Customer, DailyInput, Product, ProductRawMaterial, RawMaterial, Supplier, User  # noqa: F401
+    from models import CostData, Customer, DailyDispatch, DailyInput, Product, ProductRawMaterial, RawMaterial, Supplier, User  # noqa: F401
 
     with engine.begin() as connection:
         _ensure_sequences_and_functions(connection)

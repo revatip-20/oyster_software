@@ -5540,6 +5540,13 @@ tbody tr:last-child td {
   box-shadow: 0 1px 4px rgba(13, 148, 136, 0.3);
 }
 
+.rm-type-pill-btn.product-mode.active {
+  background: #7c3aed;
+  color: #ffffff;
+  border-color: #6d28d9;
+  box-shadow: 0 1px 4px rgba(124, 58, 237, 0.3);
+}
+
 .rm-type-pill-icon {
   font-size: 13px;
 }
@@ -5564,4 +5571,309 @@ tbody tr:last-child td {
 }
 
 
-
+
+
+/* Sidebar group header & chevron margin and closed/open orientation */
+.sidebar {
+  flex: 0 0 248px;
+  width: 248px;
+}
+
+.nav-item.nav-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  gap: 10px;
+}
+
+.nav-group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  margin-right: 6px;
+}
+
+.nav-chevron-icon {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  margin-right: 2px;
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease, color 0.15s ease;
+}
+
+.nav-chevron-icon.open {
+  transform: rotate(0deg);
+}
+
+
+/* =========================================
+   DAILY DISPATCH - SELECTED DAILY INPUT TABLE
+========================================= */
+
+.dispatch-selected-section {
+  width: 100%;
+  margin: 16px 0 18px 0;
+  background: #ffffff;
+  border: 1.5px solid #bfdbfe;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+
+.dispatch-selected-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #eff6ff 0%, #f8fafc 100%);
+  border-bottom: 1px solid #dbeafe;
+}
+
+.dispatch-selected-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dispatch-selected-title-wrap h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e3a8a;
+}
+
+.dispatch-selected-hint {
+  font-size: 11.5px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.dispatch-selected-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dispatch-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dispatch-clear-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+.dispatch-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 5px 16px;
+  border: 1px solid #1d4ed8;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+  transition: all 0.15s ease;
+}
+
+.dispatch-save-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.dispatch-save-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.dispatch-selected-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.dispatch-selected-table {
+  width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.dispatch-selected-table th {
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+  font-size: 11px !important;
+  padding: 8px 6px !important;
+  border-bottom: 1.5px solid #cbd5e1;
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  letter-spacing: 0.01em;
+}
+
+.dispatch-selected-table th.dispatch-input-col-header {
+  background: #eff6ff;
+  color: #1e40af;
+  border-bottom: 1.5px solid #93c5fd;
+}
+
+.dispatch-selected-table td {
+  padding: 6px 6px !important;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+  font-size: 11.5px !important;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.dispatch-selected-table tbody tr {
+  background: #ffffff;
+  transition: background 0.12s ease;
+}
+
+.dispatch-selected-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.dispatch-inline-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 3px 6px !important;
+  border: 1px solid #94a3b8 !important;
+  border-radius: 5px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font: inherit !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dispatch-inline-input:focus {
+  border-color: #2563eb !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18) !important;
+}
+
+.dispatch-inline-input.numeric {
+  text-align: right !important;
+}
+
+.dispatch-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #fecaca;
+  border-radius: 5px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.dispatch-remove-btn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+
+/* =========================================
+   DAILY INPUTS - STAGED ROW EDIT & DELETE BUTTONS
+========================================= */
+
+.staged-table td.staged-actions-cell {
+  display: table-cell !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+  padding: 4px 4px !important;
+}
+
+.staged-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.staged-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  line-height: 1.2 !important;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.edit-staged-btn {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+.edit-staged-btn:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+}
+
+.delete-staged-btn {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+  border: 1px solid #fecaca !important;
+}
+
+.delete-staged-btn:hover {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+}

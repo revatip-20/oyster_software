@@ -14,6 +14,9 @@ def _empty_to_none(value):
 
 class RawMaterialCreate(BaseModel):
     material_name: str | None = Field(default=None, max_length=150)
+    zach_code: str | None = Field(default=None, max_length=150)
+    has_zach_code: bool | None = Field(default=False)
+    details: str | None = Field(default=None)
     unit: str | None = Field(default=None, max_length=30)
     hsn_code: str | None = Field(default=None, max_length=20)
     rate: Decimal | None = Field(default=Decimal("0"), ge=0)
@@ -22,14 +25,26 @@ class RawMaterialCreate(BaseModel):
     ut_sgst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
     igst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
 
-    @field_validator("material_name", "unit", "hsn_code", mode="before")
+    @field_validator("material_name", "zach_code", "details", "unit", "hsn_code", mode="before")
     @classmethod
     def blank_to_none(cls, value):
         return _empty_to_none(value)
 
+    @field_validator("has_zach_code", mode="before")
+    @classmethod
+    def parse_has_zach_code(cls, value):
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip().lower() in ("true", "1", "yes", "with_zach_code", "zach_no")
+        return bool(value)
+
 
 class RawMaterialUpdate(BaseModel):
     material_name: str | None = Field(default=None, max_length=150)
+    zach_code: str | None = Field(default=None, max_length=150)
+    has_zach_code: bool | None = Field(default=None)
+    details: str | None = Field(default=None)
     unit: str | None = Field(default=None, max_length=30)
     hsn_code: str | None = Field(default=None, max_length=20)
     rate: Decimal | None = Field(default=None, ge=0)
@@ -40,16 +55,28 @@ class RawMaterialUpdate(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    @field_validator("material_name", "unit", "hsn_code", mode="before")
+    @field_validator("material_name", "zach_code", "details", "unit", "hsn_code", mode="before")
     @classmethod
     def blank_to_none(cls, value):
         return _empty_to_none(value)
+
+    @field_validator("has_zach_code", mode="before")
+    @classmethod
+    def parse_has_zach_code(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value.strip().lower() in ("true", "1", "yes", "with_zach_code", "zach_no")
+        return bool(value)
 
 
 class RawMaterialRead(BaseModel):
     id: int
     code: str
     material_name: str | None = None
+    zach_code: str | None = None
+    has_zach_code: bool | None = False
+    details: str | None = None
     unit: str | None = None
     hsn_code: str | None = None
     rate: Decimal | None = None

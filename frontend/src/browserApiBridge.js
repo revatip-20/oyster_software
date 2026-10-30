@@ -58,6 +58,13 @@ const workspaceSections = {
     updatePath: (id) => `/daily-inputs/${id}`,
     deletePath: (id) => `/daily-inputs/${id}`,
   },
+  dailyDispatch: {
+    roles: ["admin", "supervisor"],
+    listPath: "/daily-dispatch/",
+    createPath: "/daily-dispatch/",
+    updatePath: (id) => `/daily-dispatch/${id}`,
+    deletePath: (id) => `/daily-dispatch/${id}`,
+  },
 };
 
 export function getBackendApiUrl() {

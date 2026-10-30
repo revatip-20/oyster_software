@@ -27,6 +27,12 @@ class ProductBase(BaseModel):
     type: str | None = Field(default=None, max_length=50)
     zach_code: str | None = Field(default=None, max_length=150)
     has_zach_code: bool | None = Field(default=False)
+    po_batch_no: str | None = Field(default=None, max_length=100)
+    ls: str | None = Field(default=None, max_length=100)
+    hsn_code: str | None = Field(default=None, max_length=50)
+    sach_code: str | None = Field(default=None, max_length=100)
+    bin: str | None = Field(default=None, max_length=100)
+    boxes: str | None = Field(default=None, max_length=100)
     raw_material_id: int | None = Field(default=None)
     raw_material_ids: list[int] | None = Field(default=None)
     raw_materials: list[dict] | list[ProductRawMaterialItem] | None = Field(default=None)
@@ -34,14 +40,9 @@ class ProductBase(BaseModel):
     welded_element_id: int | None = Field(default=None)
     quantity: Decimal | None = Field(default=None, ge=0)
 
-    @field_validator("name", mode="before")
+    @field_validator("name", "zach_code", "po_batch_no", "ls", "hsn_code", "sach_code", "bin", "boxes", mode="before")
     @classmethod
     def blank_to_none(cls, value):
-        return _empty_to_none(value)
-
-    @field_validator("zach_code", mode="before")
-    @classmethod
-    def blank_zach_code_to_none(cls, value):
         return _empty_to_none(value)
 
     @field_validator("has_zach_code", mode="before")

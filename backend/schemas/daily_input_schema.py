@@ -32,7 +32,13 @@ class DailyInputFields(BaseModel):
     rate: Decimal | None = Field(default=None, ge=0)
     basic_value: Decimal | None = Field(default=Decimal("0"), ge=0)
     discount_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
-    hsn_code: str | None = Field(default=None, max_length=20)
+    zach_code: str | None = Field(default=None, max_length=150)
+    hsn_code: str | None = Field(default=None, max_length=50)
+    po_batch_no: str | None = Field(default=None, max_length=100)
+    ls: str | None = Field(default=None, max_length=100)
+    sach_code: str | None = Field(default=None, max_length=100)
+    bin: str | None = Field(default=None, max_length=100)
+    boxes: str | None = Field(default=None, max_length=100)
     type: Literal["raw_material", "product", "element", "other"] | None = "raw_material"
     supplier_type: Literal["supplier", "general"] | str | None = "supplier"
     discount_amount: Decimal | None = Field(default=Decimal("0"), ge=0)
@@ -68,7 +74,8 @@ class DailyInputFields(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     @field_validator(
-        "dc_no", "bill_no", "item", "unit", "hsn_code", "invoice_path", "remarks", "supplier_type",
+        "dc_no", "bill_no", "item", "unit", "zach_code", "hsn_code", "po_batch_no", "ls", "sach_code", "bin", "boxes",
+        "invoice_path", "remarks", "supplier_type",
         "supplier_company_name", "supplier_contact_person", "supplier_phone", "supplier_email",
         "supplier_address", "supplier_city", "supplier_state", "supplier_pincode", "supplier_gst_number",
         mode="before",
@@ -103,7 +110,13 @@ class DailyInputUpdate(BaseModel):
     rate: Decimal | None = Field(default=None, ge=0)
     basic_value: Decimal | None = Field(default=None, ge=0)
     discount_percent: Decimal | None = Field(default=None, ge=0, le=100)
-    hsn_code: str | None = Field(default=None, max_length=20)
+    zach_code: str | None = Field(default=None, max_length=150)
+    hsn_code: str | None = Field(default=None, max_length=50)
+    po_batch_no: str | None = Field(default=None, max_length=100)
+    ls: str | None = Field(default=None, max_length=100)
+    sach_code: str | None = Field(default=None, max_length=100)
+    bin: str | None = Field(default=None, max_length=100)
+    boxes: str | None = Field(default=None, max_length=100)
     type: Literal["raw_material", "product", "element", "other"] | None = None
     supplier_type: Literal["supplier", "general"] | str | None = None
     discount_amount: Decimal | None = Field(default=None, ge=0)
@@ -139,7 +152,8 @@ class DailyInputUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     @field_validator(
-        "dc_no", "bill_no", "item", "unit", "hsn_code", "invoice_path", "remarks", "supplier_type",
+        "dc_no", "bill_no", "item", "unit", "zach_code", "hsn_code", "po_batch_no", "ls", "sach_code", "bin", "boxes",
+        "invoice_path", "remarks", "supplier_type",
         "supplier_company_name", "supplier_contact_person", "supplier_phone", "supplier_email",
         "supplier_address", "supplier_city", "supplier_state", "supplier_pincode", "supplier_gst_number",
         mode="before",
@@ -161,7 +175,13 @@ class DailyInputRead(BaseModel):
     rate: Decimal | None = None
     basic_value: Decimal | None = None
     discount_percent: Decimal | None = None
+    zach_code: str | None = None
     hsn_code: str | None = None
+    po_batch_no: str | None = None
+    ls: str | None = None
+    sach_code: str | None = None
+    bin: str | None = None
+    boxes: str | None = None
     type: Literal["raw_material", "product", "element", "other"] | None = None
     supplier_type: str | None = "supplier"
     discount_amount: Decimal | None = None

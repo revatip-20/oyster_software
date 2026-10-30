@@ -35,6 +35,13 @@ async def get_raw_materials(db: Session = Depends(get_db)):
 )
 async def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db)):
     data = material.model_dump()
+    has_zach = bool(data.get("has_zach_code") or (data.get("zach_code") and str(data.get("zach_code")).strip()))
+    if has_zach:
+        data["has_zach_code"] = True
+    else:
+        data["has_zach_code"] = False
+        data["zach_code"] = None
+
     code = get_next_resource_code(db, RawMaterial, RawMaterial.code, "R")
     new_material = RawMaterial(code=code, **data)
     db.add(new_material)
@@ -70,6 +77,20 @@ async def edit_raw_material(
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
+
+    has_zach_key_present = "has_zach_code" in changes or "zach_code" in changes
+    if has_zach_key_present:
+        has_zach = changes.get("has_zach_code")
+        if has_zach is None:
+            has_zach = bool(changes.get("zach_code") and str(changes.get("zach_code")).strip())
+        else:
+            has_zach = bool(has_zach)
+        if has_zach:
+            changes["has_zach_code"] = True
+        else:
+            changes["has_zach_code"] = False
+            changes["zach_code"] = None
+
     for field, value in changes.items():
         setattr(material, field, value)
     material.updated_at = datetime.now(timezone.utc)
