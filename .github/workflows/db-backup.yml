@@ -1,0 +1,51 @@
+name: Database Backup
+
+on:
+  schedule:
+    # Runs daily at 02:00 UTC (07:30 IST)
+    - cron: "0 2 * * *"
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client (pg_dump)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install boto3
+        run: pip install boto3
+
+      - name: Run database backup script
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          PROJECT_REF: ${{ secrets.PROJECT_REF }}
+          BACKUP_BUCKET_NAME: ${{ secrets.BACKUP_BUCKET_NAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          KEEP_LOCAL_DUMP: "true"
+        run: python backup.py
+
+      - name: Upload backup as GitHub Actions Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-db-backup-${{ github.run_number }}
+          path: backend/supabase_backup_*.dump
+          retention-days: 30
+          if-no-files-found: error
+
