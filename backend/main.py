@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.database import initialize_database
 from routes.cost_data import router as cost_data_router
 from routes.customer import router as customer_router
+from routes.consumption import router as consumption_router
 from routes.daily_dispatch import router as daily_dispatch_router
 from routes.daily_input import router as daily_input_router
 from routes.product import router as product_router
@@ -37,6 +38,7 @@ app.include_router(cost_data_router)
 app.include_router(supplier_router)
 app.include_router(customer_router)
 app.include_router(daily_input_router)
+app.include_router(consumption_router)
 app.include_router(daily_dispatch_router)
 
 

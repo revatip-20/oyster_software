@@ -135,6 +135,7 @@ function ProductRawMaterialsManager({
   onAddNewRawMaterial,
   initialSelectedMaterialId,
   placeholderOverride = "",
+  title = "",
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [pendingMaterialId, setPendingMaterialId] = useState("");
@@ -314,7 +315,7 @@ function ProductRawMaterialsManager({
       <div className="prm-added-section">
         <div className="prm-section-header">
           <span className="prm-section-title">
-            Raw Materials in this Element ({items.length})
+            {title ? `${title} (${items.length})` : `Raw Materials in this Element (${items.length})`}
           </span>
           {items.length > 0 && !disabled && (
             <button
@@ -610,6 +611,455 @@ function ProductRawMaterialsManager({
 }
 
 const MultiRawMaterialPicker = ProductRawMaterialsManager;
+
+
+function ConsumptionProductPicker({
+  products = [],
+  selectedProductId = "",
+  onSelectProduct,
+  onDeselectProduct,
+  disabled = false,
+  isLoading = false,
+  error = "",
+  onRetry,
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const selectedProduct = useMemo(() => {
+    if (!selectedProductId) return null;
+    return products.find((p) => String(p.id) === String(selectedProductId)) || null;
+  }, [selectedProductId, products]);
+
+  const filteredProducts = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return products || [];
+    return (products || []).filter((p) => {
+      const name = String(p.name || "").toLowerCase();
+      const code = String(p.code || "").toLowerCase();
+      const type = String(p.type || "").toLowerCase();
+      const zach = String(p.zach_code || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || type.includes(q) || zach.includes(q);
+    });
+  }, [products, searchTerm]);
+
+  return (
+    <div className="di-box consumption-product-picker">
+      <div className="di-picker-header">
+        <span className="di-picker-title">
+          Product Selection{" "}
+          <span className="di-picker-subtext">
+            ({(products || []).length} available)
+          </span>
+        </span>
+
+        {selectedProduct ? (
+          <div className="di-selected-pill">
+            <span className="di-type-badge type-prd">✓ PRODUCT SELECTED</span>
+            <span className="di-selected-name">
+              <strong>{selectedProduct.name}</strong>
+              {selectedProduct.code && ` [${selectedProduct.code}]`}
+              {selectedProduct.type && ` • ${selectedProduct.type}`}
+              {selectedProduct.zach_code && ` • Zach: ${selectedProduct.zach_code}`}
+            </span>
+            <button
+              type="button"
+              className="di-deselect-btn"
+              onClick={onDeselectProduct}
+              title="Change product"
+              disabled={disabled}
+            >
+              ✕ Change Product
+            </button>
+          </div>
+        ) : (
+          <div className="di-unselected-warning">
+            <span className="di-warn-icon">👉</span>
+            <span>Please click to select a <strong>Product</strong> from the list below *</span>
+          </div>
+        )}
+      </div>
+
+      {!selectedProduct && (
+        <>
+          <div className="di-control-bar">
+            <div className="di-search-wrap">
+              <span className="di-search-icon" aria-hidden="true">🔍</span>
+              <input
+                type="text"
+                className="di-search-input"
+                placeholder="Search product by name, code, type, Zach code... (Press Enter to select)"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (filteredProducts.length > 0) {
+                      onSelectProduct(filteredProducts[0]);
+                    }
+                  }
+                }}
+                disabled={disabled || isLoading}
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  className="di-clear-search-btn"
+                  onClick={() => setSearchTerm("")}
+                  title="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div className="di-picker-error">
+              {error} {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+            </div>
+          )}
+
+          <div className="di-list-container">
+            <div className="di-list-scroll">
+              {isLoading ? (
+                <div className="di-list-loading">Loading products…</div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="di-list-empty">
+                  <div className="di-empty-prompt">
+                    <p style={{ margin: "4px 0" }}>
+                      {searchTerm.trim()
+                        ? `No products matching "${searchTerm.trim()}"`
+                        : "No products available in master files."}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                filteredProducts.map((p) => {
+                  const isSelected = String(selectedProductId) === String(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      className={`di-item-row ${isSelected ? "selected" : ""} row-prd`}
+                      onClick={() => onSelectProduct(p)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelectProduct(p);
+                        }
+                      }}
+                    >
+                      <div className="di-row-radio">
+                        <span className={`di-radio-circle ${isSelected ? "active" : ""}`} />
+                      </div>
+                      <span className="di-type-tag tag-prd">PRODUCT</span>
+                      <div className="di-item-info">
+                        <span className="di-item-name">{p.name}</span>
+                        {p.code && <span className="di-item-code">[{p.code}]</span>}
+                        {p.zach_code && <span className="di-item-zach">Zach: {p.zach_code}</span>}
+                        {p.type && <span className="di-item-subtype">({p.type})</span>}
+                      </div>
+                      <div className="di-item-meta">
+                        <span className={`di-select-cta ${isSelected ? "active" : ""}`}>
+                          {isSelected ? "Selected ✓" : "Select →"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ConsumptionMaterialsPicker({
+  value = [],
+  rawMaterials = [],
+  onChange,
+  disabled = false,
+  isLoading = false,
+  error = "",
+  onRetry,
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [pendingMaterialId, setPendingMaterialId] = useState("");
+  const [addError, setAddError] = useState("");
+
+  const rawMaterialMap = useMemo(() => {
+    return new Map((rawMaterials || []).map((rm) => [Number(rm.id), rm]));
+  }, [rawMaterials]);
+
+  // Normalized list of added raw materials
+  const items = useMemo(() => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((it) => {
+        if (!it) return null;
+        const id = Number(it.raw_material_id || it.id);
+        if (!id) return null;
+        const master = rawMaterialMap.get(id);
+        return {
+          raw_material_id: id,
+          quantity: it.quantity !== undefined && it.quantity !== null && it.quantity !== "" ? it.quantity : 1,
+          material_name: master?.material_name || it.material_name || `Raw Material #${id}`,
+          code: master?.code || it.code || "",
+          unit: master?.unit || it.unit || "",
+        };
+      })
+      .filter(Boolean);
+  }, [value, rawMaterialMap]);
+
+  const handleUpdateQty = (id, newQty) => {
+    if (disabled) return;
+    const next = items.map((it) => (it.raw_material_id === id ? { ...it, quantity: newQty } : it));
+    onChange(next);
+  };
+
+  const handleRemove = (id) => {
+    if (disabled) return;
+    const next = items.filter((it) => it.raw_material_id !== id);
+    onChange(next);
+  };
+
+  const handleAddMaterial = (rmId, qtyToAdd = 1) => {
+    if (disabled) return;
+    setAddError("");
+    const numId = Number(rmId);
+    if (!numId) {
+      setAddError("Please select a raw material.");
+      return;
+    }
+    const numQty = parseFloat(qtyToAdd);
+    if (isNaN(numQty) || numQty <= 0) {
+      setAddError("Please enter a valid quantity greater than 0.");
+      return;
+    }
+
+    const existingIdx = items.findIndex((it) => it.raw_material_id === numId);
+    let next;
+    if (existingIdx >= 0) {
+      next = items.map((it, idx) =>
+        idx === existingIdx ? { ...it, quantity: Number(it.quantity || 0) + numQty } : it
+      );
+    } else {
+      const rm = rawMaterialMap.get(numId);
+      next = [
+        ...items,
+        {
+          raw_material_id: numId,
+          quantity: numQty,
+          material_name: rm?.material_name || `Raw Material #${numId}`,
+          code: rm?.code || "",
+          unit: rm?.unit || "",
+        },
+      ];
+    }
+    onChange(next);
+    setPendingMaterialId("");
+  };
+
+  const filteredMaterials = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return rawMaterials || [];
+    return (rawMaterials || []).filter((rm) => {
+      const name = String(rm.material_name || "").toLowerCase();
+      const code = String(rm.code || "").toLowerCase();
+      const hsn = String(rm.hsn_code || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || hsn.includes(q);
+    });
+  }, [rawMaterials, searchTerm]);
+
+  return (
+    <div className="consumption-materials-manager di-box">
+      {/* 1. Added Raw Materials Section */}
+      <div className="prm-added-section">
+        <div className="prm-section-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="prm-section-title" style={{ fontSize: "14px", fontWeight: "700" }}>
+            Raw Materials Consumed ({items.length})
+          </span>
+          {items.length > 0 && !disabled && (
+            <button
+              type="button"
+              className="prm-clear-btn"
+              onClick={() => onChange([])}
+              style={{ fontSize: "12px", color: "#dc2626", background: "none", border: "none", cursor: "pointer" }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {items.length === 0 ? (
+          <div className="prm-empty-state" style={{ padding: "12px", background: "#f8fafc", borderRadius: "6px", textAlign: "center", color: "#64748b", border: "1px dashed #cbd5e1", marginTop: "6px" }}>
+            No raw materials added yet. Search or click <strong>+ Add</strong> on any raw material below.
+          </div>
+        ) : (
+          <div className="prm-items-list" style={{ display: "flex", flexDirection: "column", gap: "8px", margin: "8px 0" }}>
+            {items.map((item) => (
+              <div
+                key={item.raw_material_id}
+                className="prm-item-card"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  background: "#ffffff",
+                  border: "1.5px solid #e2e8f0",
+                  borderRadius: "6px",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+                }}
+              >
+                <div className="prm-item-details" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontWeight: "600", color: "#0f172a" }}>{item.material_name}</span>
+                  {item.code && <span className="prm-code-badge" style={{ fontSize: "11px", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>[{item.code}]</span>}
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <label style={{ fontSize: "12px", color: "#64748b", fontWeight: "600" }}>Quantity:</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.0001"
+                    value={item.quantity}
+                    onChange={(e) => handleUpdateQty(item.raw_material_id, e.target.value)}
+                    style={{ width: "80px", padding: "4px 8px", borderRadius: "4px", border: "1.5px solid #cbd5e1", textAlign: "right" }}
+                    disabled={disabled}
+                  />
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: "#334155" }}>{item.unit || "unit"}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(item.raw_material_id)}
+                    style={{ background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: "4px", padding: "4px 8px", cursor: "pointer", fontWeight: "700" }}
+                    title="Remove raw material"
+                    disabled={disabled}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 2. Search & Add Raw Materials */}
+      <div className="prm-add-container" style={{ marginTop: "12px" }}>
+        <div className="prm-add-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+          <span className="prm-add-title" style={{ fontWeight: "700", color: "#1e293b", fontSize: "13px" }}>
+            Search & Add Raw Materials ({(rawMaterials || []).length} available):
+          </span>
+          {addError && <span style={{ color: "#ef4444", fontSize: "12px", fontWeight: "600" }}>{addError}</span>}
+        </div>
+
+        {/* Search Bar */}
+        <div className="di-control-bar" style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+          <div className="di-search-wrap" style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+            <span className="di-search-icon" aria-hidden="true" style={{ position: "absolute", left: "10px" }}>🔍</span>
+            <input
+              type="text"
+              className="di-search-input"
+              placeholder="Search raw material by name or code to add..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (filteredMaterials.length > 0) {
+                    handleAddMaterial(filteredMaterials[0].id, 1);
+                  }
+                }
+              }}
+              style={{ width: "100%", padding: "6px 10px 6px 32px", borderRadius: "6px", border: "1.5px solid #cbd5e1" }}
+              disabled={disabled || isLoading}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                className="di-clear-search-btn"
+                onClick={() => setSearchTerm("")}
+                style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Scrollable List of Raw Materials with Direct "+ Add" Action */}
+        <div className="di-list-container" style={{ maxHeight: "240px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+          {isLoading ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "#64748b" }}>Loading raw materials…</div>
+          ) : filteredMaterials.length === 0 ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "#64748b" }}>
+              No raw materials found matching "{searchTerm}".
+            </div>
+          ) : (
+            filteredMaterials.map((rm) => {
+              const addedItem = items.find((it) => it.raw_material_id === Number(rm.id));
+              const isSelected = Number(pendingMaterialId) === Number(rm.id);
+
+              return (
+                <div
+                  key={rm.id}
+                  className={`di-item-row ${addedItem ? "selected" : ""}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "6px 12px",
+                    borderBottom: "1px solid #f1f5f9",
+                    background: addedItem ? "#f0fdf4" : isSelected ? "#eff6ff" : "#ffffff",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    setPendingMaterialId(rm.id);
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+                    <span style={{ fontWeight: "600", color: "#1e293b", fontSize: "13px" }}>{rm.material_name}</span>
+                    {rm.code && <span style={{ fontSize: "11px", background: "#f1f5f9", padding: "1px 5px", borderRadius: "4px", color: "#475569" }}>[{rm.code}]</span>}
+                    {rm.unit && <span style={{ fontSize: "11px", color: "#64748b" }}>({rm.unit})</span>}
+                    {addedItem && (
+                      <span style={{ fontSize: "11px", color: "#166534", fontWeight: "700", background: "#dcfce7", padding: "2px 6px", borderRadius: "4px" }}>
+                        ✓ Added (Qty: {addedItem.quantity} {addedItem.unit || rm.unit || ""})
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="prm-add-btn"
+                      onClick={() => handleAddMaterial(rm.id, 1)}
+                      style={{
+                        padding: "4px 12px",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        background: "#2563eb",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "5px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {addedItem ? "+ Add More" : "+ Add"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DailyInputItemPicker({
   rawMaterials = [],
@@ -3008,6 +3458,25 @@ function handleFormFieldChange(name, value) {
   setFormValues((current) => {
     const next = { ...current, [name]: value };
 
+    if (activeSection === "consumption" && name === "product_id" && value) {
+      const selectedPrd = lookupOptions.products?.find((p) => String(p.id) === String(value));
+      if (selectedPrd) {
+        if (selectedPrd.unit && (!next.unit || next.unit === "num")) {
+          next.unit = selectedPrd.unit;
+        }
+        if ((!next.raw_materials || next.raw_materials.length === 0) && Array.isArray(selectedPrd.raw_materials) && selectedPrd.raw_materials.length > 0) {
+          next.raw_materials = selectedPrd.raw_materials.map((it) => ({
+            raw_material_id: it.raw_material_id || it.id,
+            material_name: it.material_name || it.name,
+            code: it.code || "",
+            unit: it.unit || "",
+            quantity: it.quantity || 1,
+          }));
+          next.raw_material_ids = next.raw_materials.map((it) => it.raw_material_id);
+        }
+      }
+    }
+
     if (name === "type") {
       setFormType(value);
 
@@ -3521,6 +3990,8 @@ function handleFormFieldChange(name, value) {
       ? ["dailyInputs", "products", "suppliers", "customers"]
       : activeSection === "products"
       ? ["rawMaterials", "products"]
+      : activeSection === "consumption"
+      ? ["products", "rawMaterials"]
       : [];
     if (lookups.length === 0) return undefined;
     let isCurrent = true;
@@ -3699,6 +4170,16 @@ async function submitForm(isAddMore = false) {
     ).map((field) => field.name);
     const sectionAllowedFields = new Set([
       ...sectionFields,
+      ...(activeSection === "consumption"
+        ? [
+            "product_id",
+            "product_name",
+            "product_code",
+            "raw_materials",
+            "raw_material_ids",
+            "user_id",
+          ]
+        : []),
       ...(activeSection === "rawMaterials" ? ["zach_code", "has_zach_code", "details"] : []),
       ...(activeSection === "products" ? ["zach_code", "has_zach_code", "po_batch_no", "ls", "hsn_code", "sach_code", "bin", "boxes", "raw_material_id", "raw_material_ids", "raw_materials", "element_id", "welded_element_id"] : []),
       ...(activeSection === "dailyDispatch"
@@ -3897,6 +4378,45 @@ async function submitForm(isAddMore = false) {
         if (record.raw_material_ids.length > 0) {
           record.raw_material_id = record.raw_material_ids[0];
         }
+      }
+    }
+
+    // --------------------------------------------------
+    // Prepare Consumption payload
+    // --------------------------------------------------
+    if (activeSection === "consumption") {
+      if (!record.product_id) {
+        setPageError("Please select a product.");
+        setIsSaving(false);
+        return;
+      }
+      record.product_id = Number(record.product_id);
+      const prd = lookupOptions.products?.find((p) => Number(p.id) === record.product_id);
+      if (prd) {
+        record.product_name = prd.name;
+        record.product_code = prd.code;
+      }
+
+      const rms = (Array.isArray(formValues.raw_materials) ? formValues.raw_materials : [])
+        .filter((it) => it && (it.raw_material_id || it.id))
+        .map((it) => ({
+          raw_material_id: Number(it.raw_material_id || it.id),
+          quantity:
+            it.quantity !== "" && it.quantity !== null && it.quantity !== undefined
+              ? Number(it.quantity)
+              : 1,
+        }));
+
+      if (rms.length === 0) {
+        setPageError("Please add at least one raw material.");
+        setIsSaving(false);
+        return;
+      }
+
+      record.raw_materials = rms;
+      record.raw_material_ids = rms.map((it) => it.raw_material_id);
+      if ((record.user_id === undefined || record.user_id === null) && user?.id) {
+        record.user_id = user.id;
       }
     }
 
@@ -6155,6 +6675,11 @@ async function handleDeleteSelected() {
                             initialValues.raw_materials = [];
                             initialValues.raw_material_ids = [];
                           }
+                          if (activeSection === "consumption") {
+                            initialValues.product_id = "";
+                            initialValues.raw_materials = [];
+                            initialValues.raw_material_ids = [];
+                          }
                           if (activeSection === "dailyInputs") {
                             initialValues.supplier_type = "supplier";
                             setStagedDailyInputs([]);
@@ -7177,7 +7702,16 @@ async function handleDeleteSelected() {
                                 isLoading={lookupLoading.rawMaterials}
                                 error={lookupErrors.rawMaterials}
                                 onRetry={() => setLookupRequestVersion((version) => version + 1)}
-                                placeholderOverride={placeholderText}
+                                placeholderOverride={
+                                  activeSection === "consumption"
+                                    ? "Search raw materials by name or code to add..."
+                                    : placeholderText
+                                }
+                                title={
+                                  activeSection === "consumption"
+                                    ? "Raw Materials Consumed"
+                                    : ""
+                                }
                                 isWireHighlight={isWeldedElement}
                                 onAddNewRawMaterial={(searchedName) => handleOpenQuickAddRawMaterial(searchedName)}
                                 initialSelectedMaterialId={justCreatedRmId}
@@ -7186,7 +7720,57 @@ async function handleDeleteSelected() {
                           );
                         }
 
-                        if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputItemPicker") {
+                        if (field.type === "consumptionProductPicker") {
+  return (
+    <div
+      className={`form-field-group ${field.wide ? "field-wide" : ""}`}
+      key={field.name}
+    >
+      <ConsumptionProductPicker
+        products={lookupOptions.products || []}
+        selectedProductId={formValues.product_id ?? ""}
+        onSelectProduct={(prd) => {
+          handleFormFieldChange("product_id", prd.id);
+          if ((!formValues.raw_materials || formValues.raw_materials.length === 0) && Array.isArray(prd.raw_materials) && prd.raw_materials.length > 0) {
+            handleFormFieldChange("raw_materials", prd.raw_materials.map((it) => ({
+              raw_material_id: it.raw_material_id || it.id,
+              quantity: it.quantity || 1,
+              material_name: it.material_name || it.name,
+              code: it.code || "",
+              unit: it.unit || "",
+            })));
+          }
+        }}
+        onDeselectProduct={() => handleFormFieldChange("product_id", "")}
+        disabled={isSaving}
+        isLoading={lookupLoading.products}
+        error={lookupErrors.products}
+        onRetry={() => setLookupRequestVersion((v) => v + 1)}
+      />
+    </div>
+  );
+}
+
+if (field.type === "consumptionMaterialsPicker") {
+  return (
+    <div
+      className={`form-field-group ${field.wide ? "field-wide" : ""}`}
+      key={field.name}
+    >
+      <ConsumptionMaterialsPicker
+        value={formValues.raw_materials || []}
+        rawMaterials={lookupOptions.rawMaterials || []}
+        onChange={(nextItems) => handleFormFieldChange("raw_materials", nextItems)}
+        disabled={isSaving}
+        isLoading={lookupLoading.rawMaterials}
+        error={lookupErrors.rawMaterials}
+        onRetry={() => setLookupRequestVersion((v) => v + 1)}
+      />
+    </div>
+  );
+}
+
+if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputItemPicker") {
                           return (
                             <div
                               className={`form-field-group ${field.wide ? "field-wide" : ""}`}
@@ -10426,7 +11010,7 @@ async function handleDeleteSelected() {
                                   setNotice("");
                                   setEditingRecord(record);
 
-                                  const editValues = {};
+                                  let editValues = {};
                                   const fields =
                                     activeConfig.updateFields ||
                                     activeConfig.fields ||
@@ -10443,7 +11027,9 @@ async function handleDeleteSelected() {
                                       editValues.zach_mode = hasZach ? "with_zach_code" : "without_zach_code";
                                     } else if (field.name === "zach_code") {
                                       editValues.zach_code = record.zach_code ?? "";
-                                    } else if (field.name === "raw_material_ids" || field.name === "raw_materials" || field.type === "multiRawMaterial") {
+                                    } else if (field.name === "product_id" || field.type === "consumptionProductPicker") {
+  editValues[field.name] = record.product_id ?? "";
+} else if (field.name === "raw_material_ids" || field.name === "raw_materials" || field.type === "multiRawMaterial" || field.type === "consumptionMaterialsPicker") {
                                       const rms = Array.isArray(record.raw_materials) && record.raw_materials.length > 0
                                         ? record.raw_materials
                                         : (Array.isArray(record.raw_material_ids)
@@ -11399,6 +11985,27 @@ function Dashboard({
 
 function formatCell(value) {
   if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) {
+    return (
+      value
+        .map((it) => {
+          if (!it) return "";
+          if (typeof it === "string") return it;
+          const name =
+            it.material_name ||
+            it.name ||
+            (it.raw_material_id ? `RM #${it.raw_material_id}` : "");
+          const qty =
+            it.quantity !== undefined && it.quantity !== null && it.quantity !== ""
+              ? it.quantity
+              : "";
+          const unit = it.unit ? ` ${it.unit}` : "";
+          return name ? (qty ? `${name} (${qty}${unit})` : name) : JSON.stringify(it);
+        })
+        .filter(Boolean)
+        .join(", ") || "—"
+    );
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }

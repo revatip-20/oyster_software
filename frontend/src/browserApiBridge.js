@@ -58,6 +58,13 @@ const workspaceSections = {
     updatePath: (id) => `/daily-inputs/${id}`,
     deletePath: (id) => `/daily-inputs/${id}`,
   },
+  consumption: {
+    roles: ["admin", "supervisor"],
+    listPath: "/consumption/",
+    createPath: "/consumption/",
+    updatePath: (id) => `/consumption/${id}`,
+    deletePath: (id) => `/consumption/${id}`,
+  },
   dailyDispatch: {
     roles: ["admin", "supervisor"],
     listPath: "/daily-dispatch/",

@@ -968,6 +968,48 @@ export const sections = {
       { name: "remarks", label: "Remarks", type: "text", required: false, wide: true },
     ],
   },
+  consumption: {
+    label: "Consumption",
+    singular: "Consumption",
+    description: "Record and manage raw material consumption for products.",
+    columns: [
+      ["code", "Code"],
+      ["product_name", "Product"],
+      ["raw_materials", "Raw Materials Consumed"],
+    ],
+    fields: [
+      {
+        name: "product_id",
+        label: "Product",
+        type: "consumptionProductPicker",
+        required: true,
+        wide: true,
+      },
+      {
+        name: "raw_materials",
+        label: "Raw Materials Consumed",
+        type: "consumptionMaterialsPicker",
+        required: true,
+        wide: true,
+      },
+    ],
+    updateFields: [
+      {
+        name: "product_id",
+        label: "Product",
+        type: "consumptionProductPicker",
+        required: true,
+        wide: true,
+      },
+      {
+        name: "raw_materials",
+        label: "Raw Materials Consumed",
+        type: "consumptionMaterialsPicker",
+        required: true,
+        wide: true,
+      },
+    ],
+  },
 };
 
 export const navigation = [
@@ -991,6 +1033,7 @@ export const navigation = [
     ],
   },
   { id: "dailyInputs", label: "Daily Inputs", marker: "I", roles: ["admin", "supervisor"] },
+  { id: "consumption", label: "Consumption", marker: "CN", roles: ["admin", "supervisor"] },
   { id: "dailyDispatch", label: "Daily Dispatch", marker: "DD", roles: ["admin", "supervisor"] },
   { id: "costData", label: "Cost Data", marker: "CD", roles: ["admin", "supervisor"] },
   {

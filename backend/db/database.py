@@ -33,6 +33,7 @@ def _ensure_sequences_and_functions(connection) -> None:
         "supplier_code_seq",
         "customer_code_seq",
         "cost_data_code_seq",
+        "consumption_code_seq",
     ):
         connection.execute(
             text(f"CREATE SEQUENCE IF NOT EXISTS {sequence_name} START WITH 1")
@@ -405,6 +406,34 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_quantity NUMERIC(12, 4)",
         "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS ok NUMERIC(12, 4)",
         "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS reject NUMERIC(12, 4)",
+        """
+        CREATE TABLE IF NOT EXISTS consumption (
+            id SERIAL PRIMARY KEY,
+            code VARCHAR(80) UNIQUE,
+            date DATE,
+            product_id INTEGER REFERENCES product(id) ON DELETE SET NULL,
+            product_name VARCHAR(150),
+            product_code VARCHAR(80),
+            quantity NUMERIC(12, 4) DEFAULT 1,
+            unit VARCHAR(30) DEFAULT 'num',
+            raw_materials JSONB,
+            raw_material_ids JSONB,
+            remarks TEXT,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMPTZ NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS consumption_raw_material (
+            id SERIAL PRIMARY KEY,
+            consumption_id INTEGER NOT NULL REFERENCES consumption(id) ON DELETE CASCADE,
+            raw_material_id INTEGER NOT NULL REFERENCES raw_material(id) ON DELETE CASCADE,
+            quantity NUMERIC(12, 4) DEFAULT 1,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
     ]
     for stmt in ddl_statements:
         try:
@@ -424,7 +453,7 @@ def initialize_database():
         raise RuntimeError("Set JWT_SECRET_KEY to at least 32 characters in .env")
 
     # Import models so Base.metadata is populated before create_all.
-    from models import CostData, Customer, DailyDispatch, DailyInput, Product, ProductRawMaterial, RawMaterial, Supplier, User  # noqa: F401
+    from models import Consumption, ConsumptionRawMaterial, CostData, Customer, DailyDispatch, DailyInput, Product, ProductRawMaterial, RawMaterial, Supplier, User  # noqa: F401
 
     with engine.begin() as connection:
         _ensure_sequences_and_functions(connection)
