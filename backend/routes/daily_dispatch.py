@@ -55,10 +55,6 @@ async def add_daily_dispatch(
                 data["sach_code"] = di.sach_code or (di.other_details or {}).get("sach_code")
             if not data.get("ls"):
                 data["ls"] = di.ls or (di.other_details or {}).get("ls")
-            if not data.get("bin"):
-                data["bin"] = di.bin or (di.other_details or {}).get("bin")
-            if not data.get("boxes"):
-                data["boxes"] = di.boxes or (di.other_details or {}).get("boxes")
             if not data.get("unit"):
                 data["unit"] = di.unit
             if not data.get("hsn_code"):

@@ -2082,7 +2082,7 @@ const toggleSelectAll = (rows) => {
     products: false,
     dailyInputs: false,
   });
-  const [dailyDispatchType, setDailyDispatchType] = useState("Job work");
+  const [dailyDispatchType, setDailyDispatchType] = useState("");
   const [lookupErrors, setLookupErrors] = useState({});
   const [lookupRequestVersion, setLookupRequestVersion] = useState(0);
   const [dashboardCounts, setDashboardCounts] = useState({});
@@ -4996,6 +4996,8 @@ async function handleDeleteSelected() {
       const igst = Number(record.igst_amount) || 0;
       return Number((amt + cgst + sgst + igst).toFixed(2));
     }
+    if (key === "out_boxes") return record.out_boxes ?? record.other_details?.out_boxes ?? record.boxes;
+    if (key === "out_bins") return record.out_bins ?? record.other_details?.out_bins ?? record.bin;
     if (["hsn_code", "zach_code", "po_batch_no", "ls", "sach_code", "bin", "boxes"].includes(key)) {
       const directVal = record[key] ?? record.other_details?.[key];
       if (directVal !== undefined && directVal !== null && directVal !== "") {
@@ -6124,10 +6126,14 @@ async function handleDeleteSelected() {
                           setEditingRecord(null);
                           setFormValues({});
                           setProductSaveConfirm(null);
+                          setStagedDailyDispatches([]);
+                          if (activeSection === "dailyDispatch") {
+                            setDailyDispatchType("");
+                          }
                         } else {
                           setEditingRecord(null);
                           setProductSaveConfirm(null);
-                          const initialType = activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : activeSection === "dailyDispatch" ? (dailyDispatchType || "Job work") : activeSection === "dailyInputs" ? "raw_material" : "raw_material";
+                          const initialType = activeSection === "costData" ? "Basic" : activeSection === "products" ? "element" : activeSection === "dailyDispatch" ? "" : activeSection === "dailyInputs" ? "raw_material" : "raw_material";
                           setFormType(initialType);
                           const initialValues = {};
                           const fields = sections[activeSection]?.fields || [];
@@ -6154,7 +6160,9 @@ async function handleDeleteSelected() {
                             setStagedDailyInputs([]);
                           }
                           if (activeSection === "dailyDispatch") {
-                            initialValues.type = dailyDispatchType || "Job work";
+                            setDailyDispatchType("");
+                            initialValues.type = "";
+                            setStagedDailyDispatches([]);
                           }
                           setFormValues(initialValues);
                           setIsFormOpen(true);
@@ -6171,7 +6179,7 @@ async function handleDeleteSelected() {
               {pageError && <p className="workspace-error" role="alert">{pageError}</p>}
               {notice && <p className="workspace-notice" role="status">{notice}</p>}
 
-              {activeSection === "dailyDispatch" && (
+              {activeSection === "dailyDispatch" && isFormOpen && (
                 <div className="rm-type-selector-card" style={{ marginBottom: "16px" }}>
                   <div className="rm-type-header">
                     <div className="rm-type-label-wrap">
@@ -6213,10 +6221,23 @@ async function handleDeleteSelected() {
                   </div>
 
                   {((isFormOpen ? (formValues.type || dailyDispatchType) : dailyDispatchType) === "Job work") && (() => {
+                    const dispatchedInputIds = new Set(
+                      (records || [])
+                        .filter((r) => r && r.daily_input_id !== null && r.daily_input_id !== undefined && r.daily_input_id !== "")
+                        .map((r) => String(r.daily_input_id))
+                    );
+                    const dispatchedLegacyPos = new Set(
+                      (records || [])
+                        .filter((r) => r && (r.daily_input_id === null || r.daily_input_id === undefined || r.daily_input_id === "") && r.po_batch_no)
+                        .map((r) => String(r.po_batch_no).trim().toLowerCase())
+                    );
                     const poDailyInputs = (lookupOptions.dailyInputs || []).filter((di) => {
+                      if (dispatchedInputIds.has(String(di.id))) return false;
                       const poVal = di.po_batch_no ?? di.other_details?.po_batch_no ?? getRecordFieldValue(di, "po_batch_no") ?? "";
                       const strPo = String(poVal).trim();
-                      return strPo !== "" && strPo !== "-" && strPo !== "—";
+                      if (!strPo || strPo === "-" || strPo === "—") return false;
+                      if (dispatchedLegacyPos.has(strPo.toLowerCase())) return false;
+                      return true;
                     });
                     const isNonEmptyDisplayVal = (val) => {
                       if (val === null || val === undefined) return false;
@@ -6228,30 +6249,44 @@ async function handleDeleteSelected() {
                         key: "po_batch_no",
                         label: "P.O. Number",
                         bold: true,
-                        thStyle: { width: "16%", padding: "7px 10px" },
-                        tdStyle: { width: "16%", padding: "6px 10px" },
+                        thStyle: { width: "15%", padding: "8px 10px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "15%", padding: "7px 10px" },
                         getValue: (di) => di.po_batch_no ?? di.other_details?.po_batch_no ?? getRecordFieldValue(di, "po_batch_no"),
+                      },
+                      {
+                        key: "DC_no",
+                        label: "DC No",
+                        thStyle: { width: "12%", padding: "8px 10px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "12%", padding: "7px 10px" },
+                        getValue: (di) => di.DC_no ?? di.dc_no ?? getRecordFieldValue(di, "DC_no"),
+                      },
+                      {
+                        key: "DC_date",
+                        label: "DC Date",
+                        thStyle: { width: "12%", padding: "8px 10px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "12%", padding: "7px 10px" },
+                        getValue: (di) => normalizeCsvDate(di.DC_date ?? di.dc_date ?? getRecordFieldValue(di, "DC_date")),
                       },
                       {
                         key: "item",
                         label: "Item",
                         tdClassName: "staged-item-name",
-                        thStyle: { width: "28%", padding: "7px 10px" },
-                        tdStyle: { width: "28%", padding: "6px 10px" },
+                        thStyle: { width: "24%", padding: "8px 10px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "24%", padding: "7px 10px" },
                         getValue: (di) => di.item,
                       },
                       {
                         key: "sach_code",
                         label: "Sach",
-                        thStyle: { width: "15%", padding: "7px 10px" },
-                        tdStyle: { width: "15%", padding: "6px 10px" },
+                        thStyle: { width: "12%", padding: "8px 10px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "12%", padding: "7px 10px" },
                         getValue: (di) => di.sach_code ?? di.other_details?.sach_code ?? getRecordFieldValue(di, "sach_code"),
                       },
                       {
                         key: "ls",
                         label: "Ls",
-                        thStyle: { width: "8%", textAlign: "center", padding: "7px 8px" },
-                        tdStyle: { width: "8%", textAlign: "center", padding: "6px 8px" },
+                        thStyle: { width: "7%", textAlign: "center", padding: "8px 8px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "7%", textAlign: "center", padding: "7px 8px" },
                         getValue: (di) => di.ls ?? di.other_details?.ls ?? getRecordFieldValue(di, "ls"),
                       },
                       {
@@ -6259,23 +6294,9 @@ async function handleDeleteSelected() {
                         label: "Quantity",
                         thClassName: "numeric-cell",
                         tdClassName: "numeric-cell",
-                        thStyle: { width: "10%", textAlign: "right", padding: "7px 10px" },
-                        tdStyle: { width: "10%", textAlign: "right", padding: "6px 10px" },
+                        thStyle: { width: "9%", textAlign: "right", padding: "8px 10px", whiteSpace: "nowrap" },
+                        tdStyle: { width: "9%", textAlign: "right", padding: "7px 10px" },
                         getValue: (di) => di.quantity,
-                      },
-                      {
-                        key: "bin",
-                        label: "Bin",
-                        thStyle: { width: "7%", textAlign: "center", padding: "7px 6px" },
-                        tdStyle: { width: "7%", textAlign: "center", padding: "6px 6px" },
-                        getValue: (di) => di.bin ?? di.other_details?.bin ?? getRecordFieldValue(di, "bin"),
-                      },
-                      {
-                        key: "boxes",
-                        label: "Boxes",
-                        thStyle: { width: "6%", textAlign: "center", padding: "7px 6px" },
-                        tdStyle: { width: "6%", textAlign: "center", padding: "6px 6px" },
-                        getValue: (di) => di.boxes ?? di.other_details?.boxes ?? getRecordFieldValue(di, "boxes"),
                       },
                     ];
                     const visibleJobWorkCols = jobWorkColumns;
@@ -6296,7 +6317,7 @@ async function handleDeleteSelected() {
                                     {col.label}
                                   </th>
                                 ))}
-                                <th style={{ width: "10%", textAlign: "center", padding: "7px 8px" }}>Action</th>
+                                <th style={{ width: "9%", textAlign: "center", padding: "8px 10px", whiteSpace: "nowrap" }}>Action</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -6338,8 +6359,8 @@ async function handleDeleteSelected() {
                                       daily_input_id: di.id,
                                       product_id: di.product_id || di.element_id || null,
                                       supplier_id: di.supplier_id || null,
-                                      DC_no: cleanVal(di.DC_no ?? di.dc_no),
-                                      DC_date: normalizeCsvDate(di.DC_date ?? di.dc_date),
+                                      DC_no: cleanVal(di.DC_no ?? di.dc_no ?? getRecordFieldValue(di, "DC_no")),
+                                      DC_date: normalizeCsvDate(di.DC_date ?? di.dc_date ?? getRecordFieldValue(di, "DC_date")),
                                       bill_no: cleanVal(di.bill_no),
                                       bill_date: normalizeCsvDate(di.bill_date),
                                       item: cleanVal(di.item),
@@ -6348,8 +6369,6 @@ async function handleDeleteSelected() {
                                       sach_code: cleanVal(sachVal),
                                       ls: cleanVal(lsVal),
                                       quantity: di.quantity ?? "",
-                                      bin: cleanVal(binVal),
-                                      boxes: cleanVal(boxesVal),
                                       unit: cleanVal(di.unit) || "num",
                                       hsn_code: cleanVal(hsnVal),
                                       total_amount: di.total_amount ?? 0,
@@ -6357,8 +6376,11 @@ async function handleDeleteSelected() {
                                       out_dc_no: "",
                                       out_dc_date: "",
                                       out_quantity: "",
+                                      out_boxes: "",
+                                      out_bins: "",
                                       ok: "",
                                       reject: "",
+                                      isAdded: false,
                                     };
                                     setStagedDailyDispatches((prev) => [...prev, newRow]);
                                     setNotice(`Added Daily Input #${di.id} (P.O.No: ${poVal}) to dispatch table below.`);
@@ -6413,7 +6435,7 @@ async function handleDeleteSelected() {
                               <div className="dispatch-selected-title-wrap">
                                 <h3>Selected Daily Input for Dispatch ({stagedDailyDispatches.length})</h3>
                                 <span className="dispatch-selected-hint">
-                                  Enter Out DC No, Out DC Date, Out Quantity, OK, and Reject for the selected Daily Input(s), then click Save Dispatch.
+                                  Enter Out DC No, Out DC Date, Out Quantity, Out Boxes, Out Bins, OK, and Reject, click + Add to confirm each row, then click Save Dispatch.
                                 </span>
                               </div>
                               <div className="dispatch-selected-actions">
@@ -6437,7 +6459,10 @@ async function handleDeleteSelected() {
                                     setIsSaving(true);
                                     try {
                                       let savedCount = 0;
+                                      const newlySavedRecords = [];
                                       for (const row of stagedDailyDispatches) {
+                                        const outBoxesClean = row.out_boxes && String(row.out_boxes).trim() !== "" ? String(row.out_boxes).trim() : null;
+                                        const outBinsClean = row.out_bins && String(row.out_bins).trim() !== "" ? String(row.out_bins).trim() : null;
                                         const payload = {
                                           type: row.type || "Job work",
                                           daily_input_id: row.daily_input_id ? Number(row.daily_input_id) : null,
@@ -6453,8 +6478,8 @@ async function handleDeleteSelected() {
                                           sach_code: row.sach_code || null,
                                           ls: row.ls || null,
                                           quantity: row.quantity !== "" && row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : null,
-                                          bin: row.bin || null,
-                                          boxes: row.boxes || null,
+                                          bin: outBinsClean,
+                                          boxes: outBoxesClean,
                                           unit: row.unit || "num",
                                           hsn_code: row.hsn_code || null,
                                           total_amount: row.total_amount !== "" && row.total_amount !== null && row.total_amount !== undefined ? Number(row.total_amount) : 0,
@@ -6464,6 +6489,10 @@ async function handleDeleteSelected() {
                                           out_quantity: row.out_quantity !== "" && row.out_quantity !== null && row.out_quantity !== undefined ? Number(row.out_quantity) : null,
                                           ok: row.ok !== "" && row.ok !== null && row.ok !== undefined ? Number(row.ok) : null,
                                           reject: row.reject !== "" && row.reject !== null && row.reject !== undefined ? Number(row.reject) : null,
+                                          other_details: {
+                                            out_boxes: outBoxesClean,
+                                            out_bins: outBinsClean,
+                                          },
                                         };
                                         const response = await window.desktop.createWorkspaceRecord("dailyDispatch", payload);
                                         if (!response?.ok) {
@@ -6471,9 +6500,17 @@ async function handleDeleteSelected() {
                                           setIsSaving(false);
                                           return;
                                         }
+                                        if (response.data) {
+                                          newlySavedRecords.push(response.data);
+                                        }
                                         savedCount += 1;
                                       }
+                                      if (newlySavedRecords.length > 0) {
+                                        setRecords((prev) => [...prev, ...newlySavedRecords]);
+                                      }
                                       setStagedDailyDispatches([]);
+                                      setDailyDispatchType("");
+                                      setIsFormOpen(false);
                                       setRequestVersion((v) => v + 1);
                                       setNotice(`Saved ${savedCount} Daily Dispatch record${savedCount === 1 ? "" : "s"} successfully.`);
                                     } catch (err) {
@@ -6490,35 +6527,39 @@ async function handleDeleteSelected() {
                             <div className="dispatch-selected-table-wrapper">
                               <table className="dispatch-selected-table">
                                 <colgroup>
-                                  <col style={{ width: "9.5%" }} />
-                                  <col style={{ width: "14%" }} />
-                                  <col style={{ width: "8.5%" }} />
-                                  <col style={{ width: "4.5%" }} />
-                                  <col style={{ width: "6%" }} />
-                                  <col style={{ width: "4.5%" }} />
-                                  <col style={{ width: "4.5%" }} />
-                                  <col style={{ width: "10%" }} />
-                                  <col style={{ width: "11.5%" }} />
-                                  <col style={{ width: "8%" }} />
-                                  <col style={{ width: "7%" }} />
-                                  <col style={{ width: "7%" }} />
-                                  <col style={{ width: "5%" }} />
+                                  <col style={{ width: "115px" }} />
+                                  <col style={{ width: "95px" }} />
+                                  <col style={{ width: "100px" }} />
+                                  <col style={{ width: "150px" }} />
+                                  <col style={{ width: "90px" }} />
+                                  <col style={{ width: "55px" }} />
+                                  <col style={{ width: "80px" }} />
+                                  <col style={{ width: "110px" }} />
+                                  <col style={{ width: "130px" }} />
+                                  <col style={{ width: "95px" }} />
+                                  <col style={{ width: "90px" }} />
+                                  <col style={{ width: "90px" }} />
+                                  <col style={{ width: "75px" }} />
+                                  <col style={{ width: "75px" }} />
+                                  <col style={{ width: "95px" }} />
                                 </colgroup>
                                 <thead>
                                   <tr>
-                                    <th title="P.O. Number">P.O. Number</th>
-                                    <th title="Item">Item</th>
-                                    <th title="Sach">Sach</th>
-                                    <th style={{ textAlign: "center" }} title="Ls">Ls</th>
-                                    <th style={{ textAlign: "right" }} title="Quantity">Quantity</th>
-                                    <th style={{ textAlign: "center" }} title="Bin">Bin</th>
-                                    <th style={{ textAlign: "center" }} title="Boxes">Boxes</th>
-                                    <th className="dispatch-input-col-header" title="Out DC No">Out DC No</th>
-                                    <th className="dispatch-input-col-header" title="Out DC Date">Out DC Date</th>
-                                    <th className="dispatch-input-col-header" title="Out Quantity">Out Quantity</th>
-                                    <th className="dispatch-input-col-header" title="OK">OK</th>
-                                    <th className="dispatch-input-col-header" title="Reject">Reject</th>
-                                    <th style={{ textAlign: "center" }} title="Action">Action</th>
+                                    <th style={{ whiteSpace: "nowrap" }} title="P.O. Number">P.O. Number</th>
+                                    <th style={{ whiteSpace: "nowrap" }} title="DC No">DC No</th>
+                                    <th style={{ whiteSpace: "nowrap" }} title="DC Date">DC Date</th>
+                                    <th style={{ whiteSpace: "nowrap" }} title="Item">Item</th>
+                                    <th style={{ whiteSpace: "nowrap" }} title="Sach">Sach</th>
+                                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }} title="Ls">Ls</th>
+                                    <th style={{ textAlign: "right", whiteSpace: "nowrap" }} title="Quantity">Quantity</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out DC No">Out DC No</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out DC Date">Out DC Date</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out Quantity">Out Quantity</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out Boxes">Out Boxes</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out Bins">Out Bins</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="OK">OK</th>
+                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Reject">Reject</th>
+                                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }} title="Action">Action</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -6529,10 +6570,15 @@ async function handleDeleteSelected() {
                                       );
                                     };
                                     return (
-                                      <tr key={`${row.daily_input_id}-${idx}`}>
+                                      <tr
+                                        key={`${row.daily_input_id}-${idx}`}
+                                        style={row.isAdded ? { background: "#f0fdf4" } : undefined}
+                                      >
                                         <td title={row.po_batch_no}>
                                           <strong>{row.po_batch_no}</strong>
                                         </td>
+                                        <td title={row.DC_no}>{row.DC_no}</td>
+                                        <td title={row.DC_date}>{row.DC_date}</td>
                                         <td className="staged-item-name" title={row.item}>
                                           {row.item}
                                         </td>
@@ -6541,69 +6587,151 @@ async function handleDeleteSelected() {
                                         <td style={{ textAlign: "right", fontWeight: 600 }}>
                                           {row.quantity}
                                         </td>
-                                        <td style={{ textAlign: "center" }}>{row.bin}</td>
-                                        <td style={{ textAlign: "center" }}>{row.boxes}</td>
                                         <td>
-                                          <input
-                                            type="text"
-                                            className="dispatch-inline-input"
-                                            placeholder="Out DC No"
-                                            value={row.out_dc_no ?? ""}
-                                            onChange={(e) => updateStagedField("out_dc_no", e.target.value)}
-                                          />
+                                          {row.isAdded ? (
+                                            <span title={row.out_dc_no}>{row.out_dc_no}</span>
+                                          ) : (
+                                            <input
+                                              type="text"
+                                              className="dispatch-inline-input"
+                                              placeholder="Out DC No"
+                                              value={row.out_dc_no ?? ""}
+                                              onChange={(e) => updateStagedField("out_dc_no", e.target.value)}
+                                            />
+                                          )}
                                         </td>
                                         <td>
-                                          <input
-                                            type="date"
-                                            className="dispatch-inline-input"
-                                            value={row.out_dc_date ?? ""}
-                                            onChange={(e) => updateStagedField("out_dc_date", e.target.value)}
-                                          />
+                                          {row.isAdded ? (
+                                            <span title={row.out_dc_date}>{row.out_dc_date}</span>
+                                          ) : (
+                                            <input
+                                              type="date"
+                                              className="dispatch-inline-input"
+                                              value={row.out_dc_date ?? ""}
+                                              onChange={(e) => updateStagedField("out_dc_date", e.target.value)}
+                                            />
+                                          )}
                                         </td>
                                         <td>
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            min="0"
-                                            className="dispatch-inline-input numeric"
-                                            placeholder="0"
-                                            value={row.out_quantity ?? ""}
-                                            onChange={(e) => updateStagedField("out_quantity", e.target.value)}
-                                          />
+                                          {row.isAdded ? (
+                                            <span style={{ display: "block", textAlign: "right", fontWeight: 600 }}>
+                                              {row.out_quantity}
+                                            </span>
+                                          ) : (
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              min="0"
+                                              className="dispatch-inline-input numeric"
+                                              placeholder="0"
+                                              value={row.out_quantity ?? ""}
+                                              onChange={(e) => updateStagedField("out_quantity", e.target.value)}
+                                            />
+                                          )}
                                         </td>
                                         <td>
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            min="0"
-                                            className="dispatch-inline-input numeric"
-                                            placeholder="0"
-                                            value={row.ok ?? ""}
-                                            onChange={(e) => updateStagedField("ok", e.target.value)}
-                                          />
+                                          {row.isAdded ? (
+                                            <span style={{ display: "block", textAlign: "center" }}>
+                                              {row.out_boxes}
+                                            </span>
+                                          ) : (
+                                            <input
+                                              type="text"
+                                              className="dispatch-inline-input"
+                                              placeholder="Out Boxes"
+                                              value={row.out_boxes ?? ""}
+                                              onChange={(e) => updateStagedField("out_boxes", e.target.value)}
+                                            />
+                                          )}
                                         </td>
                                         <td>
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            min="0"
-                                            className="dispatch-inline-input numeric"
-                                            placeholder="0"
-                                            value={row.reject ?? ""}
-                                            onChange={(e) => updateStagedField("reject", e.target.value)}
-                                          />
+                                          {row.isAdded ? (
+                                            <span style={{ display: "block", textAlign: "center" }}>
+                                              {row.out_bins}
+                                            </span>
+                                          ) : (
+                                            <input
+                                              type="text"
+                                              className="dispatch-inline-input"
+                                              placeholder="Out Bins"
+                                              value={row.out_bins ?? ""}
+                                              onChange={(e) => updateStagedField("out_bins", e.target.value)}
+                                            />
+                                          )}
                                         </td>
-                                        <td style={{ textAlign: "center" }}>
-                                          <button
-                                            type="button"
-                                            className="dispatch-remove-btn"
-                                            title="Remove row"
-                                            onClick={() => {
-                                              setStagedDailyDispatches((prev) => prev.filter((_, i) => i !== idx));
-                                            }}
-                                          >
-                                            ✕
-                                          </button>
+                                        <td>
+                                          {row.isAdded ? (
+                                            <span style={{ display: "block", textAlign: "right" }}>
+                                              {row.ok}
+                                            </span>
+                                          ) : (
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              min="0"
+                                              className="dispatch-inline-input numeric"
+                                              placeholder="0"
+                                              value={row.ok ?? ""}
+                                              onChange={(e) => updateStagedField("ok", e.target.value)}
+                                            />
+                                          )}
+                                        </td>
+                                        <td>
+                                          {row.isAdded ? (
+                                            <span style={{ display: "block", textAlign: "right" }}>
+                                              {row.reject}
+                                            </span>
+                                          ) : (
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              min="0"
+                                              className="dispatch-inline-input numeric"
+                                              placeholder="0"
+                                              value={row.reject ?? ""}
+                                              onChange={(e) => updateStagedField("reject", e.target.value)}
+                                            />
+                                          )}
+                                        </td>
+                                        <td className="staged-actions-cell">
+                                          {row.isAdded ? (
+                                            <div className="staged-actions-wrap">
+                                              <button
+                                                type="button"
+                                                className="table-action edit-staged-btn"
+                                                title="Edit this dispatch row"
+                                                onClick={() => {
+                                                  updateStagedField("isAdded", false);
+                                                  setNotice(`Editing dispatch row for P.O.No: ${row.po_batch_no || row.item}.`);
+                                                }}
+                                              >
+                                                Edit
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="table-action delete-action delete-staged-btn"
+                                                title="Delete this dispatch row"
+                                                onClick={() => {
+                                                  setStagedDailyDispatches((prev) => prev.filter((_, i) => i !== idx));
+                                                  setNotice(`Deleted dispatch row for P.O.No: ${row.po_batch_no || row.item}.`);
+                                                }}
+                                              >
+                                                Delete
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              className="table-btn-add-more"
+                                              title="Add this dispatch row"
+                                              onClick={() => {
+                                                updateStagedField("isAdded", true);
+                                                setNotice(`Added dispatch row for P.O.No: ${row.po_batch_no || row.item}.`);
+                                              }}
+                                            >
+                                              + Add
+                                            </button>
+                                          )}
                                         </td>
                                       </tr>
                                     );
@@ -6619,7 +6747,13 @@ async function handleDeleteSelected() {
                 </div>
               )}
 
-              {isFormOpen && (
+              {isFormOpen &&
+                !(
+                  activeSection === "dailyDispatch" &&
+                  !editingRecord &&
+                  (!(formValues.type || dailyDispatchType) ||
+                    (formValues.type || dailyDispatchType) === "Job work")
+                ) && (
                 <form
                   className="record-form"
                   key={`${activeSection}-${editingRecord?.id ?? "new"}`}
@@ -9042,6 +9176,8 @@ async function handleDeleteSelected() {
                         setEditingRecord(null);
                         setFormValues({});
                         setStagedDailyInputs([]);
+                        setStagedDailyDispatches([]);
+                        setDailyDispatchType("");
                         setProductSaveConfirm(null);
                       }}
                       type="button"
@@ -10067,6 +10203,7 @@ async function handleDeleteSelected() {
                 </div>
               )}
 
+              {!(activeSection === "dailyDispatch" && isFormOpen) && (
               <div className="table-card">
                 <div className="table-toolbar">
                   <div>
@@ -10226,7 +10363,7 @@ async function handleDeleteSelected() {
       </th>
 
       {/* Existing column headings */}
-      {(activeSection === "dailyDispatch" && dailyDispatchType === "Job work" && filteredRecords.length > 0
+      {(activeSection === "dailyDispatch" && filteredRecords.length > 0
         ? activeConfig.columns.filter(([key]) =>
             filteredRecords.some((rec) => {
               const rawVal = getRecordFieldValue(rec, key);
@@ -10256,7 +10393,7 @@ async function handleDeleteSelected() {
         />
       </td>
 
-                          {(activeSection === "dailyDispatch" && dailyDispatchType === "Job work" && filteredRecords.length > 0
+                          {(activeSection === "dailyDispatch" && filteredRecords.length > 0
                             ? activeConfig.columns.filter(([key]) =>
                                 filteredRecords.some((rec) => {
                                   const rawVal = getRecordFieldValue(rec, key);
@@ -10272,7 +10409,6 @@ async function handleDeleteSelected() {
                             const formatted = formatCell(cellValue);
                             const displayCell =
                               activeSection === "dailyDispatch" &&
-                              dailyDispatchType === "Job work" &&
                               (formatted === "-" || formatted === "—")
                                 ? ""
                                 : formatted;
@@ -10572,6 +10708,10 @@ async function handleDeleteSelected() {
                                     editValues = calculateCostDataBasicAutofill(editValues, "init");
                                   }
 
+                                  if (activeSection === "dailyDispatch") {
+                                    setDailyDispatchType(record.type || "Job work");
+                                  }
+
                                   setFormValues(editValues);
                                   setIsFormOpen(true);
                                 }}
@@ -10609,6 +10749,7 @@ async function handleDeleteSelected() {
                   </table>
                 </div>
               </div>
+              )}
 
               {isCsvModalOpen && (
                 <div
