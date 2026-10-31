@@ -115,15 +115,36 @@ async def add_daily_input(
         data["customer_id"] = None
         data["product_id"] = None
         data["element_id"] = None
-        if supplier_type != "general" and data.get("raw_material_id"):
+        rm = None
+        if data.get("raw_material_id"):
             rm = db.query(RawMaterial).filter(RawMaterial.id == data["raw_material_id"]).first()
-            if rm:
-                if not data.get("item"):
-                    data["item"] = rm.material_name
-                if not data.get("unit"):
-                    data["unit"] = rm.unit
-                if not data.get("hsn_code"):
-                    data["hsn_code"] = rm.hsn_code
+        elif data.get("item"):
+            rm = db.query(RawMaterial).filter(
+                RawMaterial.material_name.ilike(str(data["item"]).strip()),
+                RawMaterial.deleted_at.is_(None),
+            ).first()
+        if rm:
+            if not data.get("item"):
+                data["item"] = rm.material_name
+            if not data.get("unit"):
+                data["unit"] = rm.unit
+            if not data.get("hsn_code") and rm.hsn_code:
+                data["hsn_code"] = rm.hsn_code
+            elif data.get("hsn_code") and data.get("hsn_code") != rm.hsn_code:
+                rm.hsn_code = data["hsn_code"]
+                rm.updated_at = datetime.now(timezone.utc)
+            if not data.get("zach_code") and rm.zach_code:
+                data["zach_code"] = rm.zach_code
+            elif data.get("zach_code") and data.get("zach_code") != rm.zach_code:
+                rm.zach_code = data["zach_code"]
+                rm.has_zach_code = True
+                rm.updated_at = datetime.now(timezone.utc)
+            if supplier_type == "general" and isinstance(data.get("other_details"), dict):
+                if data.get("zach_code") and not data["other_details"].get("zach_code"):
+                    data["other_details"]["zach_code"] = data["zach_code"]
+                if data.get("hsn_code") and not data["other_details"].get("hsn_code"):
+                    data["other_details"]["hsn_code"] = data["hsn_code"]
+            if supplier_type != "general":
                 if data.get("rate") is None and rm.rate is not None:
                     data["rate"] = rm.rate
                 elif data.get("rate") is not None:
@@ -287,15 +308,31 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
         entry.customer_id = None
         entry.product_id = None
         entry.element_id = None
-        if effective_supplier_type != "general" and entry.raw_material_id:
+        rm = None
+        if entry.raw_material_id:
             rm = db.query(RawMaterial).filter(RawMaterial.id == entry.raw_material_id).first()
-            if rm:
-                if not entry.item:
-                    entry.item = rm.material_name
-                if not entry.unit:
-                    entry.unit = rm.unit
-                if not entry.hsn_code:
-                    entry.hsn_code = rm.hsn_code
+        elif entry.item:
+            rm = db.query(RawMaterial).filter(
+                RawMaterial.material_name.ilike(str(entry.item).strip()),
+                RawMaterial.deleted_at.is_(None),
+            ).first()
+        if rm:
+            if not entry.item:
+                entry.item = rm.material_name
+            if not entry.unit:
+                entry.unit = rm.unit
+            if not entry.hsn_code and rm.hsn_code:
+                entry.hsn_code = rm.hsn_code
+            elif entry.hsn_code and entry.hsn_code != rm.hsn_code:
+                rm.hsn_code = entry.hsn_code
+                rm.updated_at = datetime.now(timezone.utc)
+            if not entry.zach_code and rm.zach_code:
+                entry.zach_code = rm.zach_code
+            elif entry.zach_code and entry.zach_code != rm.zach_code:
+                rm.zach_code = entry.zach_code
+                rm.has_zach_code = True
+                rm.updated_at = datetime.now(timezone.utc)
+            if effective_supplier_type != "general":
                 # Save rate in raw material for that material if provided
                 if "rate" in changes and changes["rate"] is not None:
                     rm.rate = changes["rate"]

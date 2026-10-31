@@ -5877,3 +5877,8 @@ tbody tr:last-child td {
   border-color: #fca5a5 !important;
   color: #b91c1c !important;
 }
+
+
+.form-fields .daily-input-tax-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}

@@ -1430,6 +1430,7 @@ function DailyInputRawMaterialPicker({
               <span className="di-selected-name">
                 <strong>{selectedItem._displayName || selectedItem.material_name}</strong>
                 {selectedItem.code && ` [${selectedItem.code}]`}
+                {selectedItem.zach_code && ` • Zach: ${selectedItem.zach_code}`}
                 {selectedItem.unit && ` • Unit: ${selectedItem.unit}`}
                 {selectedItem.rate !== undefined && selectedItem.rate !== null && selectedItem.rate !== "" && ` • Rate: ₹${Number(selectedItem.rate).toFixed(2)}`}
                 {selectedItem.hsn_code && ` • HSN: ${selectedItem.hsn_code}`}
@@ -2495,7 +2496,7 @@ const toggleSelectAll = (rows) => {
           material_name: selectedRm?.material_name || item?.material_name || item?.name || prev.material_name || "",
           unit: selectedRm?.unit ?? item?.unit ?? prev.unit ?? "",
           hsn_code: selectedRm?.hsn_code ?? item?.hsn_code ?? prev.hsn_code ?? "",
-          zach_code: "",
+          zach_code: selectedRm?.zach_code ?? item?.zach_code ?? "",
           po_batch_no: "",
           ls: "",
           sach_code: "",
@@ -2716,6 +2717,16 @@ const toggleSelectAll = (rows) => {
       ? (formValues.total_amount !== undefined && formValues.total_amount !== "" ? Number(formValues.total_amount) : 0)
       : Number((taxableValue + cgstAmount + sgstAmount + igstAmount).toFixed(2));
 
+    const matchedRmForRow = !isProductItem
+      ? (lookupOptions.rawMaterials || []).find(
+          (m) =>
+            (rmId && Number(m.id) === Number(rmId)) ||
+            String(m.material_name || "").trim().toLowerCase() === String(itemName).trim().toLowerCase()
+        )
+      : null;
+    const resolvedHsnCode = formValues.hsn_code || matchedRmForRow?.hsn_code || "";
+    const resolvedZachCode = formValues.zach_code || matchedRmForRow?.zach_code || "";
+
     const newRow = {
       _tempId: Date.now() + Math.random(),
       item: itemName,
@@ -2739,8 +2750,8 @@ const toggleSelectAll = (rows) => {
       ut_sgst_amount: sgstAmount,
       igst_amount: igstAmount,
       total_amount: invoiceValue,
-      hsn_code: formValues.hsn_code || "",
-      zach_code: formValues.zach_code || "",
+      hsn_code: resolvedHsnCode,
+      zach_code: resolvedZachCode,
       po_batch_no: formValues.po_batch_no || "",
       ls: formValues.ls || "",
       sach_code: formValues.sach_code || "",
@@ -2760,8 +2771,8 @@ const toggleSelectAll = (rows) => {
         material_name: itemName,
         supplier_type: "general",
         raw_material_type: rawMaterialType,
-        hsn_code: formValues.hsn_code || "",
-        zach_code: formValues.zach_code || "",
+        hsn_code: resolvedHsnCode,
+        zach_code: resolvedZachCode,
         po_batch_no: formValues.po_batch_no || "",
         ls: formValues.ls || "",
         sach_code: formValues.sach_code || "",
@@ -2895,6 +2906,8 @@ function populateRawMaterialFields(record) {
     ...record,
     item: rawMaterial.material_name,
     unit: rawMaterial.unit ?? "",
+    hsn_code: rawMaterial.hsn_code ?? record.hsn_code ?? "",
+    zach_code: rawMaterial.zach_code ?? record.zach_code ?? "",
     rate: rawMaterial.rate ?? 0,
     discount_percent: rawMaterial.discount_percent ?? 0,
     cgst_percent: rawMaterial.cgst_percent ?? 0,
@@ -3151,6 +3164,7 @@ function handleFormFieldChange(name, value) {
           next.raw_material_id = matchedRm.id;
           if (matchedRm.unit && (!next.unit || next.unit === "num")) next.unit = matchedRm.unit;
           if (matchedRm.hsn_code && !next.hsn_code) next.hsn_code = matchedRm.hsn_code;
+          if (matchedRm.zach_code && !next.zach_code) next.zach_code = matchedRm.zach_code;
           if (matchedRm.rate !== undefined && matchedRm.rate !== null && matchedRm.rate !== "" && (next.rate === "" || next.rate === undefined || next.rate === 0)) {
             next.rate = matchedRm.rate;
           }
@@ -3180,6 +3194,7 @@ function handleFormFieldChange(name, value) {
         next.item = selectedRm.material_name || "";
         next.unit = selectedRm.unit ?? "";
         next.hsn_code = selectedRm.hsn_code ?? "";
+        next.zach_code = selectedRm.zach_code ?? "";
         if (
           selectedRm.rate !== undefined &&
           selectedRm.rate !== null &&
@@ -4003,6 +4018,16 @@ async function submitForm(isAddMore = false) {
           ? (formValues.total_amount !== undefined && formValues.total_amount !== "" ? Number(formValues.total_amount) : 0)
           : Number((curTaxable + curCgstAmt + curSgstAmt + curIgstAmt).toFixed(2));
 
+        const matchedCurRm = !isProductItem
+          ? (lookupOptions.rawMaterials || []).find(
+              (rm) =>
+                (curRmId && Number(rm.id) === Number(curRmId)) ||
+                String(rm.material_name || "").trim().toLowerCase() === String(curItemName).trim().toLowerCase()
+            )
+          : null;
+        const resolvedCurHsn = formValues.hsn_code || matchedCurRm?.hsn_code || "";
+        const resolvedCurZach = formValues.zach_code || matchedCurRm?.zach_code || "";
+
         itemsToSave.push({
           item: curItemName,
           supplier_type: supplierType,
@@ -4025,8 +4050,8 @@ async function submitForm(isAddMore = false) {
           ut_sgst_amount: curSgstAmt,
           igst_amount: curIgstAmt,
           total_amount: curTotalAmt,
-          hsn_code: formValues.hsn_code || "",
-          zach_code: formValues.zach_code || "",
+          hsn_code: resolvedCurHsn,
+          zach_code: resolvedCurZach,
           po_batch_no: formValues.po_batch_no || "",
           ls: formValues.ls || "",
           sach_code: formValues.sach_code || "",
@@ -4058,8 +4083,8 @@ async function submitForm(isAddMore = false) {
             cgst_percent: curCgstPct,
             ut_sgst_percent: curSgstPct,
             igst_percent: curIgstPct,
-            hsn_code: formValues.hsn_code || "",
-            zach_code: formValues.zach_code || "",
+            hsn_code: resolvedCurHsn,
+            zach_code: resolvedCurZach,
             po_batch_no: formValues.po_batch_no || "",
             ls: formValues.ls || "",
             sach_code: formValues.sach_code || "",
@@ -4983,6 +5008,17 @@ async function handleDeleteSelected() {
         );
         if (matchedPrd && matchedPrd[key]) {
           return matchedPrd[key];
+        }
+      }
+      if (key === "zach_code" || key === "hsn_code") {
+        const rmId = record.raw_material_id;
+        if (rmId || record.type === "raw_material") {
+          const matchedRm = (lookupOptions.rawMaterials || []).find(
+            (m) => (rmId && String(m.id) === String(rmId)) || String(m.material_name || "").trim().toLowerCase() === String(record.item || "").trim().toLowerCase()
+          );
+          if (matchedRm && matchedRm[key]) {
+            return matchedRm[key];
+          }
         }
       }
     }
@@ -7678,6 +7714,17 @@ async function handleDeleteSelected() {
                                       </label>
 
                                       <label>
+                                        <span>Zach Code</span>
+                                        <input
+                                          id="record-supplier-other-zach_code"
+                                          type="text"
+                                          placeholder="Enter Zach Code"
+                                          value={formValues.zach_code ?? ""}
+                                          onChange={(e) => handleFormFieldChange("zach_code", e.target.value)}
+                                        />
+                                      </label>
+
+                                      <label>
                                         <span>HSN Code</span>
                                         <input
                                           id="record-supplier-other-hsn_code"
@@ -8309,6 +8356,17 @@ async function handleDeleteSelected() {
 
                                       <div className="general-fields-grid-4" style={{ marginTop: "10px" }}>
                                         <label>
+                                          <span>Zach Code</span>
+                                          <input
+                                            id="record-general-zach_code"
+                                            type="text"
+                                            placeholder="Enter Zach Code"
+                                            value={formValues.zach_code ?? ""}
+                                            onChange={(e) => handleFormFieldChange("zach_code", e.target.value)}
+                                          />
+                                        </label>
+
+                                        <label>
                                           <span>HSN Code</span>
                                           <input
                                             id="record-general-hsn_code"
@@ -8391,6 +8449,17 @@ async function handleDeleteSelected() {
                                             handleFormFieldChange("item", e.target.value);
                                           }}
                                           required
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span>Zach Code</span>
+                                        <input
+                                          id="record-general-other-zach_code"
+                                          type="text"
+                                          placeholder="Enter Zach Code"
+                                          value={formValues.zach_code ?? ""}
+                                          onChange={(e) => handleFormFieldChange("zach_code", e.target.value)}
                                         />
                                       </label>
 

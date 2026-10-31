@@ -598,14 +598,14 @@ export const sections = {
         dependsOnType: "other",
         required: (type) => type === "other",
       },
-      // Row 2: HSN Code, Discount %, CGST %, SGST %, IGST % in one row
+      // Row 2: Zach Code, HSN Code, Discount %, CGST %, SGST %, IGST % in one row
+      { name: "zach_code", label: "Zach Code", required: false, row: 2 },
       {
         name: "hsn_code",
         label: "HSN Code",
         required: false,
         row: 2,
       },
-      { name: "zach_code", label: "Zach Code", required: false },
       { name: "po_batch_no", label: "P.O.No / Batch No", required: false },
       { name: "ls", label: "Ls", required: false },
       { name: "sach_code", label: "Sach Code", required: false },
@@ -738,14 +738,14 @@ export const sections = {
         dependsOnType: "other",
         required: (type) => type === "other",
       },
-      // Row 2: HSN Code, Discount %, CGST %, SGST %, IGST % in one row
+      // Row 2: Zach Code, HSN Code, Discount %, CGST %, SGST %, IGST % in one row
+      { name: "zach_code", label: "Zach Code", required: false, row: 2 },
       {
         name: "hsn_code",
         label: "HSN Code",
         required: false,
         row: 2,
       },
-      { name: "zach_code", label: "Zach Code", required: false },
       { name: "po_batch_no", label: "P.O.No / Batch No", required: false },
       { name: "ls", label: "Ls", required: false },
       { name: "sach_code", label: "Sach Code", required: false },

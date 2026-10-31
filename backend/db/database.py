@@ -355,6 +355,8 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS has_zach_code BOOLEAN DEFAULT FALSE",
         "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS details TEXT",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS zach_code VARCHAR(150)",
+        "UPDATE daily_input SET zach_code = rm.zach_code FROM raw_material rm WHERE daily_input.raw_material_id = rm.id AND (daily_input.zach_code IS NULL OR daily_input.zach_code = '') AND rm.zach_code IS NOT NULL AND rm.zach_code <> ''",
+        "UPDATE daily_input SET zach_code = rm.zach_code FROM raw_material rm WHERE daily_input.raw_material_id IS NULL AND daily_input.type = 'raw_material' AND LOWER(TRIM(daily_input.item)) = LOWER(TRIM(rm.material_name)) AND (daily_input.zach_code IS NULL OR daily_input.zach_code = '') AND rm.zach_code IS NOT NULL AND rm.zach_code <> ''",
         """
         CREATE TABLE IF NOT EXISTS daily_dispatch (
             id SERIAL PRIMARY KEY,
