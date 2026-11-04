@@ -24,4 +24,7 @@ contextBridge.exposeInMainWorld("desktop", {
     ipcRenderer.invoke("workspace:export-pdf", section, htmlContent, title),
   openPrintPreview: (htmlContent, title) =>
     ipcRenderer.invoke("workspace:print-preview", htmlContent, title),
+  getStockBalanceStatus: () => ipcRenderer.invoke("stock-balance:status"),
+  processStockBalance: (payloadOrMonth) =>
+    ipcRenderer.invoke("stock-balance:process", payloadOrMonth),
 });

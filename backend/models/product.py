@@ -43,6 +43,11 @@ class Product(Base):
     element_id = Column(Integer, ForeignKey("product.id", ondelete="SET NULL"), nullable=True)
     welded_element_id = Column(Integer, ForeignKey("product.id", ondelete="SET NULL"), nullable=True)
     quantity = Column(Numeric(12, 2), nullable=True, server_default=text("0"))
+    open_balance = Column(Numeric(12, 4), nullable=True, server_default=text("0"))
+    received = Column(Numeric(12, 4), nullable=True, server_default=text("0"))
+    consumption = Column(Numeric(12, 4), nullable=True, server_default=text("0"))
+    close_balance = Column(Numeric(12, 4), nullable=True, server_default=text("0"))
+    balance_month = Column(String(7), nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")

@@ -12,6 +12,7 @@ from models.raw_material import RawMaterial
 from models.user import User
 from routes.user import require_roles
 from services.code_generator import get_next_resource_code
+from services.stock_service import handle_daily_input_received
 from schemas.daily_input_schema import (
     DailyInputBulkDelete,
     DailyInputCreate,
@@ -202,6 +203,7 @@ async def add_daily_input(
 
     new_entry = DailyInput(**data)
     db.add(new_entry)
+    handle_daily_input_received(new_entry, db)
     try:
         db.commit()
     except IntegrityError as error:
@@ -227,6 +229,8 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
     changes = update.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one field must be provided")
+
+    old_qty = float(entry.quantity or 0.0)
 
     effective_type = changes.get("type") or entry.type
     effective_supplier_type = changes.get("supplier_type") or getattr(entry, "supplier_type", None) or "supplier"
@@ -386,6 +390,11 @@ async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session 
             entry.other_details = changes["other_details"]
 
     entry.updated_at = datetime.now(timezone.utc)
+    new_qty = float(entry.quantity or 0.0)
+    qty_delta = new_qty - old_qty
+    if qty_delta != 0.0:
+        handle_daily_input_received(entry, db, qty_delta=qty_delta)
+
     try:
         db.commit()
     except IntegrityError as error:
@@ -419,6 +428,7 @@ def _soft_delete_daily_inputs(entry_ids: list[int], db: Session):
         for entry in entries:
             entry.deleted_at = now
             entry.updated_at = now
+            handle_daily_input_received(entry, db, qty_delta=-float(entry.quantity or 0.0))
         db.commit()
     except Exception:
         db.rollback()

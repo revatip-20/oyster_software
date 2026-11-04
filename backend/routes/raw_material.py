@@ -43,6 +43,12 @@ async def add_raw_material(material: RawMaterialCreate, db: Session = Depends(ge
         data["zach_code"] = None
 
     code = get_next_resource_code(db, RawMaterial, RawMaterial.code, "R")
+    ob = data.get("open_balance") or 0
+    rc = data.get("received") or 0
+    cn = data.get("consumption") or 0
+    data["close_balance"] = ob + rc - cn
+    data["balance_month"] = datetime.now().strftime("%Y-%m")
+
     new_material = RawMaterial(code=code, **data)
     db.add(new_material)
     try:
@@ -90,6 +96,13 @@ async def edit_raw_material(
         else:
             changes["has_zach_code"] = False
             changes["zach_code"] = None
+
+    if "open_balance" in changes or "received" in changes or "consumption" in changes:
+        ob = changes.get("open_balance", material.open_balance) or 0
+        rc = changes.get("received", material.received) or 0
+        cn = changes.get("consumption", material.consumption) or 0
+        changes["close_balance"] = ob + rc - cn
+        changes["balance_month"] = datetime.now().strftime("%Y-%m")
 
     for field, value in changes.items():
         setattr(material, field, value)

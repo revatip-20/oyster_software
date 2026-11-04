@@ -12,13 +12,21 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg2://postgres:postgres@localhost:5432/oyster_db",
 )
 
+# Supabase connection pooler (aws-0-*.pooler.supabase.com) in session mode (port 5432)
+# has a strict limit of 15 connections total across all clients.
+# Keep SQLAlchemy pool small (3 connections, max 2 overflow = 5 total)
+# to avoid exceeding the pooler limit.
+is_supabase = "pooler.supabase.com" in DATABASE_URL or "supabase.co" in DATABASE_URL
+default_pool_size = 3 if is_supabase else 5
+default_max_overflow = 2 if is_supabase else 5
+
 engine = create_engine(
     DATABASE_URL,
-    pool_size=20,
-    max_overflow=20,
+    pool_size=int(os.getenv("DB_POOL_SIZE", str(default_pool_size))),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", str(default_max_overflow))),
     pool_pre_ping=True,
     pool_recycle=300,
-    pool_timeout=30,
+    pool_timeout=15,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -34,6 +42,7 @@ def _ensure_sequences_and_functions(connection) -> None:
         "customer_code_seq",
         "cost_data_code_seq",
         "consumption_code_seq",
+        "purchase_order_code_seq",
     ):
         connection.execute(
             text(f"CREATE SEQUENCE IF NOT EXISTS {sequence_name} START WITH 1")
@@ -326,6 +335,11 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS sach_code VARCHAR(100)",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS bin VARCHAR(100)",
         "ALTER TABLE product ADD COLUMN IF NOT EXISTS boxes VARCHAR(100)",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS open_balance NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS received NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS consumption NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS close_balance NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE product ADD COLUMN IF NOT EXISTS balance_month VARCHAR(7)",
         "CREATE TABLE IF NOT EXISTS product_raw_material (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES product(id) ON DELETE CASCADE, raw_material_id INTEGER NOT NULL REFERENCES raw_material(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), CONSTRAINT uq_product_raw_material UNIQUE (product_id, raw_material_id))",
         "ALTER TABLE product_raw_material ADD COLUMN IF NOT EXISTS quantity NUMERIC(12, 4) DEFAULT 1",
         "ALTER TABLE daily_input ADD COLUMN IF NOT EXISTS remarks TEXT",
@@ -406,6 +420,17 @@ def _drop_not_null_constraints(connection) -> None:
         "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS out_quantity NUMERIC(12, 4)",
         "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS ok NUMERIC(12, 4)",
         "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS reject NUMERIC(12, 4)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS rework NUMERIC(12, 4)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS reject_defect NUMERIC(12, 4)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS defect_type VARCHAR(100)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS defect_other VARCHAR(150)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS defect_number NUMERIC(12, 4)",
+        "ALTER TABLE daily_dispatch ADD COLUMN IF NOT EXISTS defects JSONB",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS open_balance NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS received NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS consumption NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS close_balance NUMERIC(12, 4) DEFAULT 0",
+        "ALTER TABLE raw_material ADD COLUMN IF NOT EXISTS balance_month VARCHAR(7)",
         """
         CREATE TABLE IF NOT EXISTS consumption (
             id SERIAL PRIMARY KEY,
@@ -434,6 +459,28 @@ def _drop_not_null_constraints(connection) -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS purchase_order_received (
+            id SERIAL PRIMARY KEY,
+            code VARCHAR(80) UNIQUE,
+            customer_id INTEGER REFERENCES customer(id) ON DELETE SET NULL,
+            product_id INTEGER REFERENCES product(id) ON DELETE SET NULL,
+            item VARCHAR(150),
+            zach_code VARCHAR(150),
+            sach_code VARCHAR(100),
+            po_no VARCHAR(100),
+            po_date DATE,
+            qty_ord NUMERIC(12, 4) DEFAULT 0,
+            qty_dis NUMERIC(12, 4) DEFAULT 0,
+            qty_bal NUMERIC(12, 4) DEFAULT 0,
+            price NUMERIC(12, 2) DEFAULT 0,
+            remarks TEXT,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMPTZ NULL
+        )
+        """,
     ]
     for stmt in ddl_statements:
         try:
@@ -453,7 +500,20 @@ def initialize_database():
         raise RuntimeError("Set JWT_SECRET_KEY to at least 32 characters in .env")
 
     # Import models so Base.metadata is populated before create_all.
-    from models import Consumption, ConsumptionRawMaterial, CostData, Customer, DailyDispatch, DailyInput, Product, ProductRawMaterial, RawMaterial, Supplier, User  # noqa: F401
+    from models import (  # noqa: F401
+        Consumption,
+        ConsumptionRawMaterial,
+        CostData,
+        Customer,
+        DailyDispatch,
+        DailyInput,
+        Product,
+        ProductRawMaterial,
+        PurchaseOrderReceived,
+        RawMaterial,
+        Supplier,
+        User,
+    )
 
     with engine.begin() as connection:
         _ensure_sequences_and_functions(connection)
@@ -489,6 +549,23 @@ def initialize_database():
             existing_admin = session.query(User).filter(User.id == admin_id).first()
             if existing_admin and not existing_admin.password_hash:
                 existing_admin.password_hash = admin_values["password_hash"]
+
+    # Ensure existing records have balance_month initialized
+    try:
+        from datetime import date
+        current_m = date.today().strftime("%Y-%m")
+        with SessionLocal() as db_session:
+            db_session.execute(
+                text("UPDATE raw_material SET balance_month = :m WHERE balance_month IS NULL"),
+                {"m": current_m},
+            )
+            db_session.execute(
+                text("UPDATE product SET balance_month = :m WHERE balance_month IS NULL"),
+                {"m": current_m},
+            )
+            db_session.commit()
+    except Exception as error:
+        print(f"Error during startup balance initialization: {error}")
 
 
 def get_db():

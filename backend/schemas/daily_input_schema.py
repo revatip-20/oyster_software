@@ -12,6 +12,25 @@ def _empty_to_none(value):
     return value
 
 
+def _parse_date_or_none(value):
+    val = _empty_to_none(value)
+    if val is None:
+        return None
+    if isinstance(val, str):
+        v = val.strip()
+        if not v:
+            return None
+        parts = v.replace("-", "/").split("/")
+        if len(parts) == 3 and len(parts[0]) <= 2 and len(parts[2]) == 4:
+            try:
+                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+                return date(y, m, d)
+            except Exception:
+                pass
+        return v
+    return val
+
+
 class DailyInputFields(BaseModel):
     dc_date: date | None = Field(
         default=None,
@@ -83,6 +102,11 @@ class DailyInputFields(BaseModel):
     @classmethod
     def blank_to_none(cls, value):
         return _empty_to_none(value)
+
+    @field_validator("dc_date", "bill_date", mode="before")
+    @classmethod
+    def blank_date_to_none(cls, value):
+        return _parse_date_or_none(value)
 
 
 class DailyInputCreate(DailyInputFields):
@@ -161,6 +185,11 @@ class DailyInputUpdate(BaseModel):
     @classmethod
     def blank_to_none(cls, value):
         return _empty_to_none(value)
+
+    @field_validator("dc_date", "bill_date", mode="before")
+    @classmethod
+    def blank_date_to_none(cls, value):
+        return _parse_date_or_none(value)
 
 
 class DailyInputRead(BaseModel):

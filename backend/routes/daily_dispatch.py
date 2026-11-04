@@ -18,6 +18,7 @@ from schemas.daily_dispatch_schema import (
     DailyDispatchUpdate,
 )
 from services.code_generator import get_next_resource_code
+from services.stock_service import handle_daily_dispatch_consumption
 
 router = APIRouter(prefix="/daily-dispatch", tags=["daily dispatch"])
 permissions = [Depends(require_roles("admin", "supervisor"))]
@@ -86,6 +87,7 @@ async def add_daily_dispatch(
 
     new_record = DailyDispatch(code=code, **data)
     db.add(new_record)
+    handle_daily_dispatch_consumption(new_record, db)
     try:
         db.commit()
     except IntegrityError as error:
@@ -93,6 +95,13 @@ async def add_daily_dispatch(
         raise HTTPException(status_code=409, detail="Failed to save daily dispatch record") from error
     db.refresh(new_record)
     return new_record
+
+
+def _get_dispatch_qty(record: DailyDispatch) -> float:
+    out_q = float(record.out_quantity or 0.0)
+    ok_rej = float(record.ok or 0.0) + float(record.reject or 0.0)
+    q = float(record.quantity or 0.0)
+    return out_q if out_q > 0 else (ok_rej if ok_rej > 0 else q)
 
 
 @router.patch("/{dispatch_id}", response_model=DailyDispatchRead, dependencies=permissions)
@@ -108,10 +117,16 @@ async def edit_daily_dispatch(
     if record is None:
         raise HTTPException(status_code=404, detail="Daily dispatch record not found")
 
+    old_qty = _get_dispatch_qty(record)
     changes = update.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(record, field, value)
     record.updated_at = datetime.now(timezone.utc)
+
+    new_qty = _get_dispatch_qty(record)
+    qty_delta = new_qty - old_qty
+    if qty_delta != 0.0:
+        handle_daily_dispatch_consumption(record, db, qty_delta=qty_delta)
 
     try:
         db.commit()
@@ -132,6 +147,10 @@ async def delete_daily_dispatch(dispatch_id: int, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Daily dispatch record not found")
 
     record.deleted_at = datetime.now(timezone.utc)
+    qty = _get_dispatch_qty(record)
+    if qty > 0:
+        handle_daily_dispatch_consumption(record, db, qty_delta=-qty)
+
     db.commit()
     return {"message": "Daily dispatch record deleted", "id": dispatch_id}
 
@@ -148,6 +167,9 @@ async def bulk_delete_daily_dispatches(
     ).all()
     for rec in records:
         rec.deleted_at = now
+        qty = _get_dispatch_qty(rec)
+        if qty > 0:
+            handle_daily_dispatch_consumption(rec, db, qty_delta=-qty)
     db.commit()
     return {"deleted_count": len(records), "deleted_ids": [r.id for r in records]}
 

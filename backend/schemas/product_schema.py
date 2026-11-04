@@ -39,6 +39,11 @@ class ProductBase(BaseModel):
     element_id: int | None = Field(default=None)
     welded_element_id: int | None = Field(default=None)
     quantity: Decimal | None = Field(default=None, ge=0)
+    open_balance: Decimal | None = Field(default=Decimal("0"))
+    received: Decimal | None = Field(default=Decimal("0"))
+    consumption: Decimal | None = Field(default=Decimal("0"))
+    close_balance: Decimal | None = Field(default=Decimal("0"))
+    balance_month: str | None = None
 
     @field_validator("name", "zach_code", "po_batch_no", "ls", "hsn_code", "sach_code", "bin", "boxes", mode="before")
     @classmethod
@@ -130,7 +135,7 @@ class ProductBase(BaseModel):
             return items
         return []
 
-    @field_validator("quantity", mode="before")
+    @field_validator("quantity", "open_balance", "received", "consumption", "close_balance", mode="before")
     @classmethod
     def parse_quantity(cls, value):
         val = _empty_to_none(value)
@@ -166,6 +171,7 @@ class ProductRead(ProductBase):
     welded_element_name: str | None = None
     welded_element_code: str | None = None
     component_name: str | None = None
+    bom_raw_materials: list[ProductRawMaterialItem] | None = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
     deleted_at: datetime | None = None

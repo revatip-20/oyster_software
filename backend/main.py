@@ -10,7 +10,9 @@ from routes.consumption import router as consumption_router
 from routes.daily_dispatch import router as daily_dispatch_router
 from routes.daily_input import router as daily_input_router
 from routes.product import router as product_router
+from routes.purchase_order_received import router as purchase_order_received_router
 from routes.raw_material import router as raw_material_router
+from routes.stock_balance import router as stock_balance_router
 from routes.supplier import router as supplier_router
 from routes.user import router as user_router
 
@@ -40,6 +42,8 @@ app.include_router(customer_router)
 app.include_router(daily_input_router)
 app.include_router(consumption_router)
 app.include_router(daily_dispatch_router)
+app.include_router(purchase_order_received_router)
+app.include_router(stock_balance_router)
 
 
 @app.get("/")

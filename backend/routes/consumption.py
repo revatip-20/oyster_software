@@ -19,6 +19,7 @@ from schemas.consumption_schema import (
     ConsumptionUpdate,
 )
 from services.code_generator import get_next_resource_code
+from services.stock_service import handle_consumption_stock_update
 
 router = APIRouter(prefix="/consumption", tags=["consumption"])
 permissions = [Depends(require_roles("admin", "supervisor"))]
@@ -206,6 +207,8 @@ async def add_consumption(
             quantity=qty,
         ))
 
+    handle_consumption_stock_update(new_record, db, raw_materials_list=data.get("raw_materials"))
+
     try:
         db.commit()
     except IntegrityError as error:
@@ -228,6 +231,9 @@ async def edit_consumption(
     ).first()
     if record is None:
         raise HTTPException(status_code=404, detail="Consumption record not found")
+
+    # Revert prior consumption effects before applying updates
+    handle_consumption_stock_update(record, db, raw_materials_list=record.raw_materials, is_delete=True)
 
     changes = update.model_dump(exclude_unset=True)
 
@@ -263,6 +269,10 @@ async def edit_consumption(
         setattr(record, field, value)
 
     record.updated_at = datetime.now(timezone.utc)
+
+    # Apply new consumption effects
+    handle_consumption_stock_update(record, db, raw_materials_list=record.raw_materials, is_delete=False)
+
     try:
         db.commit()
     except IntegrityError as error:
@@ -289,6 +299,7 @@ def _soft_delete_consumptions(ids: list[int], db: Session):
     for r in records:
         r.deleted_at = now
         r.updated_at = now
+        handle_consumption_stock_update(r, db, raw_materials_list=r.raw_materials, is_delete=True)
 
     try:
         db.commit()

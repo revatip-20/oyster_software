@@ -2411,6 +2411,52 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+function formatDateToDDMMYYYY(val) {
+  if (val === null || val === undefined || val === "") return "";
+  const s = String(val).trim();
+  if (!s || s === "-" || s === "—" || s.toLowerCase() === "null") return "";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${d}/${m}/${y}`;
+  }
+  const slashMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (slashMatch) {
+    const [, d, m, y] = slashMatch;
+    return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+  }
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, "0");
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const y = parsed.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+  return s;
+}
+
+function toIsoDateString(val) {
+  if (val === null || val === undefined || val === "") return "";
+  const s = String(val).trim();
+  if (!s || s === "-" || s === "—" || s.toLowerCase() === "null") return "";
+  const ddmmyyyy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (ddmmyyyy) {
+    const [, d, m, y] = ddmmyyyy;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return s;
+}
+
 function Workspace({ user, onLogout }) {
   const availableNavigation = useMemo(() => {
     return navigation
@@ -2582,6 +2628,133 @@ const toggleSelectAll = (rows) => {
   const [isSavingQuickRm, setIsSavingQuickRm] = useState(false);
   const [quickRmError, setQuickRmError] = useState("");
   const [justCreatedRmId, setJustCreatedRmId] = useState(null);
+
+  const [monthEndStatus, setMonthEndStatus] = useState(null);
+  const [isMonthEndModalOpen, setIsMonthEndModalOpen] = useState(false);
+  const [isProcessingMonthEnd, setIsProcessingMonthEnd] = useState(false);
+  const [hasDismissedMonthEnd, setHasDismissedMonthEnd] = useState(false);
+
+  const checkMonthEndStatus = useCallback(async (forceOpen = false) => {
+    try {
+      let res;
+      if (window.desktop?.getStockBalanceStatus) {
+        res = await window.desktop.getStockBalanceStatus();
+      } else {
+        const token = localStorage.getItem("token") || "";
+        const r = await fetch("http://127.0.0.1:8000/stock-balance/status", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        res = await r.json();
+      }
+      if (res?.ok && res.data) {
+        setMonthEndStatus(res.data);
+        if (forceOpen || (res.data.needs_processing && !hasDismissedMonthEnd)) {
+          setIsMonthEndModalOpen(true);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not check month-end status:", err);
+    }
+  }, [hasDismissedMonthEnd]);
+
+  const handleConfirmMonthEnd = async () => {
+    setIsProcessingMonthEnd(true);
+    setPageError("");
+    setNotice("");
+    try {
+      let res;
+      const targetMonth = monthEndStatus?.target_month;
+      if (window.desktop?.processStockBalance) {
+        res = await window.desktop.processStockBalance(targetMonth);
+      } else {
+        const token = localStorage.getItem("token") || "";
+        const r = await fetch("http://127.0.0.1:8000/stock-balance/process", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ target_month: targetMonth }),
+        });
+        res = await r.json();
+      }
+      if (res?.ok) {
+        setIsMonthEndModalOpen(false);
+        setNotice(
+          res.message ||
+            "Successfully processed month-end stock balances. Close balance has replaced Open balance for all raw materials and products."
+        );
+        setRequestVersion((v) => v + 1);
+        await checkMonthEndStatus(false);
+      } else {
+        setPageError(res?.error || "Failed to process month-end balances.");
+      }
+    } catch (err) {
+      setPageError(err?.message || "An unexpected error occurred during month-end rollover.");
+    } finally {
+      setIsProcessingMonthEnd(false);
+    }
+  };
+
+  const handleDismissMonthEnd = () => {
+    setHasDismissedMonthEnd(true);
+    setIsMonthEndModalOpen(false);
+  };
+
+  const [isManualProcessingModalOpen, setIsManualProcessingModalOpen] = useState(false);
+  const [manualProcessingScope, setManualProcessingScope] = useState("all");
+  const [isProcessingManual, setIsProcessingManual] = useState(false);
+
+  const handleOpenManualProcessingModal = () => {
+    setManualProcessingScope(selectedIds.length > 0 ? "selected" : "all");
+    setIsManualProcessingModalOpen(true);
+  };
+
+  const handleConfirmManualProcessing = async () => {
+    setIsProcessingManual(true);
+    setPageError("");
+    setNotice("");
+    try {
+      const isSelectedScope = manualProcessingScope === "selected" && selectedIds.length > 0;
+      const payload = {
+        section: activeSection,
+        item_ids: isSelectedScope ? selectedIds.map(Number).filter(Boolean) : null,
+      };
+
+      let res;
+      if (window.desktop?.processStockBalance) {
+        res = await window.desktop.processStockBalance(payload);
+      } else {
+        const token = localStorage.getItem("token") || "";
+        const r = await fetch("http://127.0.0.1:8000/stock-balance/process", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        res = await r.json();
+      }
+
+      if (res?.ok) {
+        setIsManualProcessingModalOpen(false);
+        const sectionName = activeConfig?.label || (activeSection === "rawMaterials" ? "Raw Materials" : "Products");
+        setNotice(
+          res.message ||
+            `Manual processing completed for ${sectionName}. Close balance has replaced Open balance.`
+        );
+        setSelectedIds([]);
+        setRequestVersion((v) => v + 1);
+      } else {
+        setPageError(res?.error || "Failed to execute manual processing.");
+      }
+    } catch (err) {
+      setPageError(err?.message || "An unexpected error occurred during manual processing.");
+    } finally {
+      setIsProcessingManual(false);
+    }
+  };
 
   function handleOpenQuickAddRawMaterial(searchedName) {
     setPageError("");
@@ -3464,8 +3637,12 @@ function handleFormFieldChange(name, value) {
         if (selectedPrd.unit && (!next.unit || next.unit === "num")) {
           next.unit = selectedPrd.unit;
         }
-        if ((!next.raw_materials || next.raw_materials.length === 0) && Array.isArray(selectedPrd.raw_materials) && selectedPrd.raw_materials.length > 0) {
-          next.raw_materials = selectedPrd.raw_materials.map((it) => ({
+        const availableRms = (Array.isArray(selectedPrd.bom_raw_materials) && selectedPrd.bom_raw_materials.length > 0)
+          ? selectedPrd.bom_raw_materials
+          : (Array.isArray(selectedPrd.raw_materials) ? selectedPrd.raw_materials : []);
+
+        if (availableRms.length > 0) {
+          next.raw_materials = availableRms.map((it) => ({
             raw_material_id: it.raw_material_id || it.id,
             material_name: it.material_name || it.name,
             code: it.code || "",
@@ -3832,6 +4009,16 @@ function handleFormFieldChange(name, value) {
       }
     }
 
+    if (
+      (activeSection === "rawMaterials" || activeSection === "products") &&
+      ["open_balance", "received", "consumption"].includes(name)
+    ) {
+      const ob = parseFloat(next.open_balance) || 0;
+      const rc = parseFloat(next.received) || 0;
+      const cn = parseFloat(next.consumption) || 0;
+      next.close_balance = Number((ob + rc - cn).toFixed(4));
+    }
+
     return next;
   });
 }
@@ -3848,12 +4035,20 @@ function handleFormFieldChange(name, value) {
     if (activeSection === "rawMaterials") {
       emptyValues.zach_mode = "without_zach_code";
       emptyValues.zach_code = "";
+      emptyValues.open_balance = 0;
+      emptyValues.received = 0;
+      emptyValues.consumption = 0;
+      emptyValues.close_balance = 0;
     }
     if (activeSection === "products") {
       emptyValues.product_mode = "with_zach_code";
       emptyValues.zach_code = "";
       emptyValues.raw_materials = [];
       emptyValues.raw_material_ids = [];
+      emptyValues.open_balance = 0;
+      emptyValues.received = 0;
+      emptyValues.consumption = 0;
+      emptyValues.close_balance = 0;
     }
     if (activeSection === "dailyInputs") {
       emptyValues.type = "";
@@ -3982,6 +4177,12 @@ function handleFormFieldChange(name, value) {
       isCurrent = false;
     };
   }, [activeSection, onLogout, requestVersion, user.role]);
+
+  useEffect(() => {
+    if (activeSection === "rawMaterials" || activeSection === "products") {
+      checkMonthEndStatus(false);
+    }
+  }, [activeSection, checkMonthEndStatus]);
 
   useEffect(() => {
     const lookups = activeSection === "dailyInputs"
@@ -4114,6 +4315,10 @@ async function submitForm(isAddMore = false) {
       "wound_cap_element_value",
       "pp_film_width",
       "pp_film_thickness",
+      "open_balance",
+      "received",
+      "consumption",
+      "close_balance",
     ];
 
     for (const [key, value] of Object.entries(formValues)) {
@@ -4180,8 +4385,8 @@ async function submitForm(isAddMore = false) {
             "user_id",
           ]
         : []),
-      ...(activeSection === "rawMaterials" ? ["zach_code", "has_zach_code", "details"] : []),
-      ...(activeSection === "products" ? ["zach_code", "has_zach_code", "po_batch_no", "ls", "hsn_code", "sach_code", "bin", "boxes", "raw_material_id", "raw_material_ids", "raw_materials", "element_id", "welded_element_id"] : []),
+      ...(activeSection === "rawMaterials" ? ["zach_code", "has_zach_code", "details", "open_balance", "received", "consumption", "close_balance"] : []),
+      ...(activeSection === "products" ? ["zach_code", "has_zach_code", "po_batch_no", "ls", "hsn_code", "sach_code", "bin", "boxes", "raw_material_id", "raw_material_ids", "raw_materials", "element_id", "welded_element_id", "open_balance", "received", "consumption", "close_balance"] : []),
       ...(activeSection === "dailyDispatch"
         ? [
             "type",
@@ -4300,6 +4505,14 @@ async function submitForm(isAddMore = false) {
       record.details = formValues.details !== undefined
         ? (formValues.details ? String(formValues.details).trim() : null)
         : (editingRecord?.details ?? null);
+
+      const ob = parseFloat(record.open_balance !== undefined ? record.open_balance : (editingRecord?.open_balance ?? 0)) || 0;
+      const rc = parseFloat(record.received !== undefined ? record.received : (editingRecord?.received ?? 0)) || 0;
+      const cn = parseFloat(record.consumption !== undefined ? record.consumption : (editingRecord?.consumption ?? 0)) || 0;
+      record.open_balance = ob;
+      record.received = rc;
+      record.consumption = cn;
+      record.close_balance = Number((ob + rc - cn).toFixed(4));
     }
 
     // --------------------------------------------------
@@ -4379,6 +4592,14 @@ async function submitForm(isAddMore = false) {
           record.raw_material_id = record.raw_material_ids[0];
         }
       }
+
+      const ob = parseFloat(record.open_balance !== undefined ? record.open_balance : (editingRecord?.open_balance ?? 0)) || 0;
+      const rc = parseFloat(record.received !== undefined ? record.received : (editingRecord?.received ?? 0)) || 0;
+      const cn = parseFloat(record.consumption !== undefined ? record.consumption : (editingRecord?.consumption ?? 0)) || 0;
+      record.open_balance = ob;
+      record.received = rc;
+      record.consumption = cn;
+      record.close_balance = Number((ob + rc - cn).toFixed(4));
     }
 
     // --------------------------------------------------
@@ -5644,10 +5865,12 @@ async function handleDeleteSelected() {
   function formatCsvCell(record, key) {
     const raw = getRecordFieldValue(record, key);
     const val = getRelatedCompanyName(key, raw, record) ?? raw ?? "";
-    if (typeof val === "string" && key.toLowerCase().includes("date") && val.includes("T")) {
-      return val.split("T")[0];
-    }
     if (val === null || val === undefined || val === "") return "";
+    const isDateKey = typeof key === "string" && (key.toLowerCase().includes("date") || key.toLowerCase().endsWith("_at"));
+    if (isDateKey || (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val))) {
+      const formatted = formatDateToDDMMYYYY(val);
+      if (formatted) return formatted;
+    }
     if (typeof val === "object") return JSON.stringify(val);
     return String(val);
   }
@@ -6790,7 +7013,7 @@ async function handleDeleteSelected() {
                         label: "DC Date",
                         thStyle: { width: "12%", padding: "8px 10px", whiteSpace: "nowrap" },
                         tdStyle: { width: "12%", padding: "7px 10px" },
-                        getValue: (di) => normalizeCsvDate(di.DC_date ?? di.dc_date ?? getRecordFieldValue(di, "DC_date")),
+                        getValue: (di) => formatDateToDDMMYYYY(normalizeCsvDate(di.DC_date ?? di.dc_date ?? getRecordFieldValue(di, "DC_date"))),
                       },
                       {
                         key: "item",
@@ -7103,7 +7326,7 @@ async function handleDeleteSelected() {
                                           <strong>{row.po_batch_no}</strong>
                                         </td>
                                         <td title={row.DC_no}>{row.DC_no}</td>
-                                        <td title={row.DC_date}>{row.DC_date}</td>
+                                        <td title={row.DC_date}>{formatDateToDDMMYYYY(row.DC_date)}</td>
                                         <td className="staged-item-name" title={row.item}>
                                           {row.item}
                                         </td>
@@ -7127,7 +7350,7 @@ async function handleDeleteSelected() {
                                         </td>
                                         <td>
                                           {row.isAdded ? (
-                                            <span title={row.out_dc_date}>{row.out_dc_date}</span>
+                                            <span title={row.out_dc_date}>{formatDateToDDMMYYYY(row.out_dc_date)}</span>
                                           ) : (
                                             <input
                                               type="date"
@@ -8083,10 +8306,14 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                                   )
                                 }
                                 required={!isFieldDisabled && isFieldRequired}
-                                disabled={isFieldDisabled}
+                                disabled={isFieldDisabled || field.disabled}
                                 placeholder={field.placeholder || ""}
                                 type={field.type || "text"}
-                                value={formValues[field.name] ?? ""}
+                                value={
+                                  field.type === "date"
+                                    ? toIsoDateString(formValues[field.name])
+                                    : formValues[field.name] ?? ""
+                                }
                               />
                             )}
                           </label>
@@ -10787,6 +11014,173 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                 </div>
               )}
 
+              {isMonthEndModalOpen && (
+                <div
+                  aria-labelledby="month-end-title"
+                  aria-modal="true"
+                  className="modal-overlay month-end-overlay"
+                  onClick={() => {
+                    if (!isProcessingMonthEnd) handleDismissMonthEnd();
+                  }}
+                  role="presentation"
+                >
+                  <div
+                    className="modal-dialog month-end-dialog"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                    style={{ maxWidth: "560px", padding: "28px" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "18px" }}>
+                      <span style={{ fontSize: "36px", lineHeight: 1 }}>📅</span>
+                      <div>
+                        <h2 id="month-end-title" style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0f172a" }}>
+                          Month-End Stock Balance Processing
+                        </h2>
+                        <span style={{ fontSize: "13px", color: "#64748b" }}>
+                          Today's Date: <strong>{monthEndStatus?.today_date || formatDateToDDMMYYYY(new Date().toISOString().slice(0, 10))}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "20px" }}>
+                      <p style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "600", color: "#1e293b" }}>
+                        It is end of month, do you want to process the data?
+                      </p>
+                      <p style={{ margin: "0 0 12px 0", fontSize: "13.5px", color: "#475569", lineHeight: "1.5" }}>
+                        If you proceed, for all Raw Materials and Products:
+                      </p>
+                      <ul style={{ margin: "0 0 12px 0", paddingLeft: "20px", fontSize: "13px", color: "#334155", lineHeight: "1.6" }}>
+                        <li><strong>Open Balance</strong> will be replaced by the current <strong>Close Balance</strong> value.</li>
+                        <li><strong>Received</strong> and <strong>Consumption</strong> will be reset to <strong>0</strong>.</li>
+                        <li><strong>Close Balance</strong> will become equal to the new <strong>Open Balance</strong>.</li>
+                        <li>Open balance will stay unchanged for the rest of the month unless edited manually.</li>
+                      </ul>
+                      {monthEndStatus?.target_month && (
+                        <div style={{ fontSize: "12.5px", color: "#0369a1", background: "#e0f2fe", padding: "6px 10px", borderRadius: "6px" }}>
+                          Target Rollover Month: <strong>{monthEndStatus.target_month}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={isProcessingMonthEnd}
+                        onClick={handleDismissMonthEnd}
+                      >
+                        No / Not Now
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        disabled={isProcessingMonthEnd}
+                        onClick={handleConfirmMonthEnd}
+                        style={{ background: "#0284c7", borderColor: "#0284c7" }}
+                      >
+                        {isProcessingMonthEnd ? "Processing Rollover…" : "Yes, Process Data"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isManualProcessingModalOpen && (
+                <div
+                  aria-labelledby="manual-process-title"
+                  aria-modal="true"
+                  className="modal-overlay manual-process-overlay"
+                  onClick={() => {
+                    if (!isProcessingManual) setIsManualProcessingModalOpen(false);
+                  }}
+                  role="presentation"
+                >
+                  <div
+                    className="modal-dialog manual-process-dialog"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                    style={{ maxWidth: "560px", padding: "28px" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "18px" }}>
+                      <span style={{ fontSize: "36px", lineHeight: 1 }}>⚙️</span>
+                      <div>
+                        <h2 id="manual-process-title" style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0f172a" }}>
+                          Manual Processing - {activeConfig.label}
+                        </h2>
+                        <span style={{ fontSize: "13px", color: "#64748b" }}>
+                          Replace Open Balance with current Close Balance
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "20px" }}>
+                      <p style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "600", color: "#1e293b" }}>
+                        Do you want to run manual processing for {activeConfig.label}?
+                      </p>
+                      <p style={{ margin: "0 0 10px 0", fontSize: "13.5px", color: "#475569", lineHeight: "1.5" }}>
+                        This will replace the <strong>Open Balance</strong> value with the current <strong>Close Balance</strong> value:
+                      </p>
+                      <ul style={{ margin: "0 0 14px 0", paddingLeft: "20px", fontSize: "13px", color: "#334155", lineHeight: "1.6" }}>
+                        <li><strong>Open Balance</strong> = Current <strong>Close Balance</strong></li>
+                        <li><strong>Received</strong> = <strong>0</strong></li>
+                        <li><strong>Consumption</strong> = <strong>0</strong></li>
+                        <li><strong>Close Balance</strong> = New <strong>Open Balance</strong></li>
+                      </ul>
+
+                      {selectedIds.length > 0 && (
+                        <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #cbd5e1" }}>
+                          <span style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#334155", marginBottom: "8px" }}>
+                            Choose scope:
+                          </span>
+                          <div style={{ display: "flex", gap: "16px" }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", cursor: "pointer" }}>
+                              <input
+                                type="radio"
+                                name="manual_scope"
+                                checked={manualProcessingScope === "selected"}
+                                onChange={() => setManualProcessingScope("selected")}
+                                disabled={isProcessingManual}
+                              />
+                              Selected records only ({selectedIds.length})
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", cursor: "pointer" }}>
+                              <input
+                                type="radio"
+                                name="manual_scope"
+                                checked={manualProcessingScope === "all"}
+                                onChange={() => setManualProcessingScope("all")}
+                                disabled={isProcessingManual}
+                              />
+                              All {activeConfig.label.toLowerCase()} ({records.length})
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={isProcessingManual}
+                        onClick={() => setIsManualProcessingModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        disabled={isProcessingManual}
+                        onClick={handleConfirmManualProcessing}
+                        style={{ background: "#0284c7", borderColor: "#0284c7" }}
+                      >
+                        {isProcessingManual ? "Processing…" : "Yes, Process Now"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {!(activeSection === "dailyDispatch" && isFormOpen) && (
               <div className="table-card">
                 <div className="table-toolbar">
@@ -10798,6 +11192,18 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                   </div>
                   <div className="table-toolbar-actions">
                     {isLoading && <span className="loading-indicator">Loading…</span>}
+                    {(activeSection === "rawMaterials" || activeSection === "products") && (
+                      <button
+                        className="refresh-button manual-process-button"
+                        disabled={isLoading || isProcessingManual}
+                        onClick={handleOpenManualProcessingModal}
+                        title="Run manual processing to set close balance as open balance"
+                        type="button"
+                        style={{ color: "#0284c7", borderColor: "#bae6fd", fontWeight: 600 }}
+                      >
+                        ⚙️ Manual Processing
+                      </button>
+                    )}
                     <button
                       className="refresh-button csv-download-button"
                       disabled={isLoading || records.length === 0}
@@ -10952,7 +11358,7 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
             filteredRecords.some((rec) => {
               const rawVal = getRecordFieldValue(rec, key);
               const cellValue = getRelatedCompanyName(key, rawVal, rec) ?? rawVal;
-              const formatted = String(formatCell(cellValue) ?? "").trim();
+              const formatted = String(formatCell(cellValue, key) ?? "").trim();
               return formatted !== "" && formatted !== "-" && formatted !== "—" && formatted.toLowerCase() !== "null";
             })
           )
@@ -10982,7 +11388,7 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                                 filteredRecords.some((rec) => {
                                   const rawVal = getRecordFieldValue(rec, key);
                                   const cellValue = getRelatedCompanyName(key, rawVal, rec) ?? rawVal;
-                                  const formatted = String(formatCell(cellValue) ?? "").trim();
+                                  const formatted = String(formatCell(cellValue, key) ?? "").trim();
                                   return formatted !== "" && formatted !== "-" && formatted !== "—" && formatted.toLowerCase() !== "null";
                                 })
                               )
@@ -10990,7 +11396,7 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                           ).map(([key]) => {
                             const rawVal = getRecordFieldValue(record, key);
                             const cellValue = getRelatedCompanyName(key, rawVal, record) ?? rawVal;
-                            const formatted = formatCell(cellValue);
+                            const formatted = formatCell(cellValue, key);
                             const displayCell =
                               activeSection === "dailyDispatch" &&
                               (formatted === "-" || formatted === "—")
@@ -11983,7 +12389,7 @@ function Dashboard({
   );
 }
 
-function formatCell(value) {
+function formatCell(value, key = "") {
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) {
     return (
@@ -12007,7 +12413,13 @@ function formatCell(value) {
     );
   }
   if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  const str = String(value);
+  const isDateKey = typeof key === "string" && (key.toLowerCase().includes("date") || key.toLowerCase().endsWith("_at"));
+  if (isDateKey || /^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const formatted = formatDateToDDMMYYYY(str);
+    if (formatted) return formatted;
+  }
+  return str;
 }
 
 export default App;

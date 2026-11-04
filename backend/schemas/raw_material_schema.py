@@ -24,6 +24,11 @@ class RawMaterialCreate(BaseModel):
     cgst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
     ut_sgst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
     igst_percent: Decimal | None = Field(default=Decimal("0"), ge=0, le=100)
+    open_balance: Decimal | None = Field(default=Decimal("0"))
+    received: Decimal | None = Field(default=Decimal("0"))
+    consumption: Decimal | None = Field(default=Decimal("0"))
+    close_balance: Decimal | None = Field(default=None)
+    balance_month: str | None = None
 
     @field_validator("material_name", "zach_code", "details", "unit", "hsn_code", mode="before")
     @classmethod
@@ -52,6 +57,11 @@ class RawMaterialUpdate(BaseModel):
     cgst_percent: Decimal | None = Field(default=None, ge=0, le=100)
     ut_sgst_percent: Decimal | None = Field(default=None, ge=0, le=100)
     igst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    open_balance: Decimal | None = None
+    received: Decimal | None = None
+    consumption: Decimal | None = None
+    close_balance: Decimal | None = None
+    balance_month: str | None = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -84,6 +94,11 @@ class RawMaterialRead(BaseModel):
     cgst_percent: Decimal | None = None
     ut_sgst_percent: Decimal | None = None
     igst_percent: Decimal | None = None
+    open_balance: Decimal | None = None
+    received: Decimal | None = None
+    consumption: Decimal | None = None
+    close_balance: Decimal | None = None
+    balance_month: str | None = None
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None = None

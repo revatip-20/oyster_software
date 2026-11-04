@@ -293,6 +293,13 @@ const workspaceSections = {
     updatePath: (id) => `/daily-dispatch/${id}`,
     deletePath: (id) => `/daily-dispatch/${id}`,
   },
+  purchaseOrderReceived: {
+    roles: ["admin", "supervisor"],
+    listPath: "/purchase-orders-received/",
+    createPath: "/purchase-orders-received/",
+    updatePath: (id) => `/purchase-orders-received/${id}`,
+    deletePath: (id) => `/purchase-orders-received/${id}`,
+  },
 };
 
 async function requestWorkspaceApi(path, method, body) {
@@ -505,6 +512,24 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("stock-balance:status", async () => {
+  if (!authenticatedSession) {
+    return { ok: false, sessionExpired: true, error: "Please sign in again." };
+  }
+  return requestWorkspaceApi("/stock-balance/status", "GET");
+});
+
+ipcMain.handle("stock-balance:process", async (_event, payloadOrMonth) => {
+  if (!authenticatedSession) {
+    return { ok: false, sessionExpired: true, error: "Please sign in again." };
+  }
+  const body =
+    typeof payloadOrMonth === "string"
+      ? { target_month: payloadOrMonth }
+      : payloadOrMonth || {};
+  return requestWorkspaceApi("/stock-balance/process", "POST", body);
+});
+
 
 ipcMain.handle("workspace:export-csv", async (event, section, columnLabels, rows) => {
   if (!authenticatedSession) {
@@ -526,9 +551,15 @@ ipcMain.handle("workspace:export-csv", async (event, section, columnLabels, rows
   const escapeCsvCell = (value) => {
     let cell = value === null || value === undefined ? "" : String(value);
     const trimmed = cell.trim();
-    if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}.*)?$/.test(trimmed) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(trimmed)) {
-      const cleanDate = trimmed.includes("T") ? trimmed.split("T")[0] : trimmed;
-      return `"=""${cleanDate}"""`;
+    const yyyymmdd = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
+    if (yyyymmdd) {
+      const formatted = `${yyyymmdd[3].padStart(2, "0")}/${yyyymmdd[2].padStart(2, "0")}/${yyyymmdd[1]}`;
+      return `"=""${formatted}"""`;
+    }
+    const ddmmyyyy = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (ddmmyyyy) {
+      const formatted = `${ddmmyyyy[1].padStart(2, "0")}/${ddmmyyyy[2].padStart(2, "0")}/${ddmmyyyy[3]}`;
+      return `"=""${formatted}"""`;
     }
     if (/^[\s]*[=+\-@]/.test(cell)) cell = `'${cell}`;
     return `"${cell.replaceAll('"', '""')}"`;

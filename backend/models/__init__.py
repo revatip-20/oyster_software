@@ -4,6 +4,7 @@ from .consumption import Consumption, ConsumptionRawMaterial
 from .daily_dispatch import DailyDispatch
 from .daily_input import DailyInput
 from .product import Product, ProductRawMaterial
+from .purchase_order_received import PurchaseOrderReceived
 from .raw_material import RawMaterial
 from .supplier import Supplier
 from .user import User
@@ -20,4 +21,5 @@ __all__ = [
     "CostData",
     "Consumption",
     "ConsumptionRawMaterial",
+    "PurchaseOrderReceived",
 ]

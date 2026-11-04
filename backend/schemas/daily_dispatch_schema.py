@@ -11,6 +11,25 @@ def _empty_to_none(value):
     return value
 
 
+def _parse_date_or_none(value):
+    val = _empty_to_none(value)
+    if val is None:
+        return None
+    if isinstance(val, str):
+        v = val.strip()
+        if not v:
+            return None
+        parts = v.replace("-", "/").split("/")
+        if len(parts) == 3 and len(parts[0]) <= 2 and len(parts[2]) == 4:
+            try:
+                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+                return date(y, m, d)
+            except Exception:
+                pass
+        return v
+    return val
+
+
 class DailyDispatchFields(BaseModel):
     type: str | None = Field(default="Job work", max_length=50)
     dc_date: date | None = Field(
@@ -39,6 +58,12 @@ class DailyDispatchFields(BaseModel):
     out_quantity: Decimal | None = None
     ok: Decimal | None = None
     reject: Decimal | None = None
+    rework: Decimal | None = None
+    reject_defect: Decimal | None = None
+    defect_type: str | None = Field(default=None, max_length=100)
+    defect_other: str | None = Field(default=None, max_length=150)
+    defect_number: Decimal | None = None
+    defects: list[dict] | dict | None = None
     unit: str | None = Field(default=None, max_length=30)
     hsn_code: str | None = Field(default=None, max_length=50)
     rate: Decimal | None = Field(default=Decimal("0"), ge=0)
@@ -73,12 +98,17 @@ class DailyDispatchFields(BaseModel):
     def blank_to_none(cls, value):
         return _empty_to_none(value)
 
+    @field_validator("dc_date", "bill_date", "out_dc_date", mode="before")
+    @classmethod
+    def blank_date_to_none(cls, value):
+        return _parse_date_or_none(value)
+
     @field_validator(
-        "dc_date", "bill_date", "out_dc_date", "quantity", "out_quantity", "ok", "reject",
+        "quantity", "out_quantity", "ok", "reject",
         mode="before",
     )
     @classmethod
-    def blank_numeric_or_date_to_none(cls, value):
+    def blank_numeric_to_none(cls, value):
         return _empty_to_none(value)
 
 

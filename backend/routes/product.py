@@ -11,6 +11,7 @@ from models.raw_material import RawMaterial
 from routes.user import require_roles
 from schemas.product_schema import ProductCreate, ProductRead, ProductUpdate
 from services.code_generator import get_next_resource_code
+from services.stock_service import get_product_bom_raw_materials
 
 router = APIRouter(tags=["products"])
 
@@ -130,6 +131,26 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
         item.zach_code = p.zach_code
         item.component_name = None
 
+    try:
+        bom_map = get_product_bom_raw_materials(p.id, db)
+        bom_items = []
+        if bom_map:
+            rms = db.query(RawMaterial).filter(RawMaterial.id.in_(bom_map.keys())).all()
+            rm_lookup = {rm.id: rm for rm in rms}
+            for rm_id, qty in bom_map.items():
+                rm = rm_lookup.get(rm_id)
+                if rm:
+                    bom_items.append({
+                        "raw_material_id": rm.id,
+                        "quantity": qty,
+                        "material_name": rm.material_name,
+                        "code": rm.code,
+                        "unit": rm.unit,
+                    })
+        item.bom_raw_materials = bom_items
+    except Exception:
+        item.bom_raw_materials = []
+
     return item
 
 
@@ -203,6 +224,11 @@ async def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
         data["raw_material_id"] = None
 
     code = get_next_resource_code(db, Product, Product.code, "P")
+    ob = data.get("open_balance") or 0
+    rc = data.get("received") or 0
+    cn = data.get("consumption") or 0
+    data["close_balance"] = ob + rc - cn
+    data["balance_month"] = datetime.now().strftime("%Y-%m")
     new_product = Product(code=code, **data)
     db.add(new_product)
     db.flush()
@@ -299,6 +325,13 @@ async def edit_product(product_id: int, update: ProductUpdate, db: Session = Dep
     if raw_materials_changed:
         changes["raw_material_ids"] = [rid for rid, _ in items_to_save]
         changes["raw_material_id"] = changes["raw_material_ids"][0] if changes["raw_material_ids"] else None
+
+    if "open_balance" in changes or "received" in changes or "consumption" in changes:
+        ob = changes.get("open_balance", product.open_balance) or 0
+        rc = changes.get("received", product.received) or 0
+        cn = changes.get("consumption", product.consumption) or 0
+        changes["close_balance"] = ob + rc - cn
+        changes["balance_month"] = datetime.now().strftime("%Y-%m")
 
     for field, value in changes.items():
         setattr(product, field, value)
