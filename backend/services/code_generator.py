@@ -1,4 +1,5 @@
 import re
+from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -42,3 +43,64 @@ def get_next_resource_code(
         if not exists:
             return candidate_code
         next_num += 1
+
+
+def get_next_out_dc_no(db: Session, target_date=None) -> str:
+    """
+    Generates an incremental Out DC number in the format:
+    YY-(YY+1)/<counter>, e.g. 26-27/42.
+    In the next year (e.g. Jan 2027), starts from 27-28/1.
+    """
+    from models.daily_dispatch import DailyDispatch
+
+    d = date.today()
+    if target_date is not None:
+        if isinstance(target_date, str):
+            try:
+                d = datetime.fromisoformat(target_date.strip()).date()
+            except Exception:
+                try:
+                    parts = target_date.strip().replace("-", "/").split("/")
+                    if len(parts) == 3:
+                        if len(parts[2]) == 4:
+                            d = date(int(parts[2]), int(parts[1]), int(parts[0]))
+                        elif len(parts[0]) == 4:
+                            d = date(int(parts[0]), int(parts[1]), int(parts[2]))
+                except Exception:
+                    d = date.today()
+        elif isinstance(target_date, datetime):
+            d = target_date.date()
+        elif isinstance(target_date, date):
+            d = target_date
+
+    year = d.year
+    yy = f"{year % 100:02d}"
+    next_yy = f"{(year + 1) % 100:02d}"
+    output_prefix = f"{yy}-{next_yy}/"
+
+    records = db.scalars(
+        select(DailyDispatch.out_dc_no).where(
+            DailyDispatch.deleted_at.is_(None),
+            DailyDispatch.out_dc_no.isnot(None),
+        )
+    ).all()
+
+    pattern = re.compile(
+        rf"^(?:20)?{yy}-(?:20)?{next_yy}/(\d+)$",
+        re.IGNORECASE,
+    )
+    max_num = 0
+    for dc_no in records:
+        if not dc_no:
+            continue
+        m = pattern.match(str(dc_no).strip())
+        if m:
+            try:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+
+    return f"{output_prefix}{max_num + 1}"
+

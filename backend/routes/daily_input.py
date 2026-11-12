@@ -21,11 +21,12 @@ from schemas.daily_input_schema import (
 )
 
 router = APIRouter(prefix="/daily-inputs", tags=["daily inputs"])
+read_permissions = [Depends(require_roles("admin", "supervisor", "employee"))]
 permissions = [Depends(require_roles("admin", "supervisor"))]
 
 
-@router.get("/", response_model=list[DailyInputRead], dependencies=permissions)
-async def get_daily_inputs(db: Session = Depends(get_db)):
+@router.get("/", response_model=list[DailyInputRead], dependencies=read_permissions)
+def get_daily_inputs(db: Session = Depends(get_db)):
     return db.scalars(
         select(DailyInput)
         .where(DailyInput.deleted_at.is_(None))
@@ -34,7 +35,7 @@ async def get_daily_inputs(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=DailyInputRead, status_code=status.HTTP_201_CREATED)
-async def add_daily_input(
+def add_daily_input(
     entry: DailyInputCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "supervisor")),
@@ -218,7 +219,7 @@ async def add_daily_input(
 
 @router.patch("/{entry_id}", response_model=DailyInputRead, dependencies=permissions)
 @router.put("/{entry_id}", response_model=DailyInputRead, dependencies=permissions)
-async def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depends(get_db)):
+def edit_daily_input(entry_id: int, update: DailyInputUpdate, db: Session = Depends(get_db)):
     entry = db.query(DailyInput).filter(
         DailyInput.id == entry_id,
         DailyInput.deleted_at.is_(None),
@@ -445,12 +446,12 @@ def _soft_delete_daily_inputs(entry_ids: list[int], db: Session):
 
 
 @router.delete("/{entry_id}", dependencies=permissions)
-async def delete_daily_input(entry_id: int, db: Session = Depends(get_db)):
+def delete_daily_input(entry_id: int, db: Session = Depends(get_db)):
     return _soft_delete_daily_inputs([entry_id], db)
 
 
 @router.delete("/", dependencies=permissions)
-async def delete_daily_inputs(
+def delete_daily_inputs(
     payload: DailyInputBulkDelete,
     db: Session = Depends(get_db),
 ):

@@ -22,6 +22,7 @@ from services.code_generator import get_next_resource_code
 from services.stock_service import handle_consumption_stock_update
 
 router = APIRouter(prefix="/consumption", tags=["consumption"])
+read_permissions = [Depends(require_roles("admin", "supervisor", "employee"))]
 permissions = [Depends(require_roles("admin", "supervisor"))]
 
 
@@ -93,11 +94,20 @@ def _build_summary(raw_materials_list: list) -> str:
     return ", ".join(parts) if parts else "—"
 
 
-def _populate_consumption_read(c: Consumption, db: Session) -> ConsumptionRead:
+def _populate_consumption_read(
+    c: Consumption,
+    db: Session,
+    rm_lookup: dict[int, RawMaterial] | None = None,
+    prod_lookup: dict[int, Product] | None = None,
+) -> ConsumptionRead:
     raw_items = []
     if c.consumption_raw_materials:
         for crm in c.consumption_raw_materials:
-            rm = crm.raw_material or db.query(RawMaterial).filter(RawMaterial.id == crm.raw_material_id).first()
+            rm = (
+                rm_lookup.get(crm.raw_material_id)
+                if rm_lookup is not None
+                else (crm.raw_material or db.query(RawMaterial).filter(RawMaterial.id == crm.raw_material_id).first())
+            )
             qty_val = float(crm.quantity) if crm.quantity is not None else 1.0
             raw_items.append({
                 "raw_material_id": crm.raw_material_id,
@@ -111,7 +121,11 @@ def _populate_consumption_read(c: Consumption, db: Session) -> ConsumptionRead:
             if isinstance(it, dict):
                 raw_items.append(it)
             elif isinstance(it, (int, str)):
-                rm = db.query(RawMaterial).filter(RawMaterial.id == int(it)).first()
+                try:
+                    rid = int(it)
+                except (ValueError, TypeError):
+                    continue
+                rm = rm_lookup.get(rid) if rm_lookup is not None else db.query(RawMaterial).filter(RawMaterial.id == rid).first()
                 if rm:
                     raw_items.append({
                         "raw_material_id": rm.id,
@@ -124,7 +138,7 @@ def _populate_consumption_read(c: Consumption, db: Session) -> ConsumptionRead:
     p_name = c.product_name
     p_code = c.product_code
     if c.product_id and (not p_name or not p_code):
-        prod = db.query(Product).filter(Product.id == c.product_id).first()
+        prod = prod_lookup.get(c.product_id) if prod_lookup is not None else db.query(Product).filter(Product.id == c.product_id).first()
         if prod:
             if not p_name:
                 p_name = prod.name
@@ -151,18 +165,28 @@ def _populate_consumption_read(c: Consumption, db: Session) -> ConsumptionRead:
     )
 
 
-@router.get("/", response_model=list[ConsumptionRead], dependencies=permissions)
-async def get_consumptions(db: Session = Depends(get_db)):
+@router.get("/", response_model=list[ConsumptionRead], dependencies=read_permissions)
+def get_consumptions(db: Session = Depends(get_db)):
     records = db.scalars(
         select(Consumption)
         .where(Consumption.deleted_at.is_(None))
         .order_by(Consumption.id.desc())
     ).all()
-    return [_populate_consumption_read(r, db) for r in records]
+    if not records:
+        return []
+
+    # Preload lookups to eliminate N+1 queries over remote database
+    rms = db.scalars(select(RawMaterial).where(RawMaterial.deleted_at.is_(None))).all()
+    rm_lookup = {r.id: r for r in rms}
+
+    prods = db.scalars(select(Product).where(Product.deleted_at.is_(None))).all()
+    prod_lookup = {p.id: p for p in prods}
+
+    return [_populate_consumption_read(r, db, rm_lookup=rm_lookup, prod_lookup=prod_lookup) for r in records]
 
 
 @router.post("/", response_model=ConsumptionRead, status_code=status.HTTP_201_CREATED)
-async def add_consumption(
+def add_consumption(
     entry: ConsumptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "supervisor")),
@@ -220,7 +244,7 @@ async def add_consumption(
 
 
 @router.patch("/{consumption_id}", response_model=ConsumptionRead, dependencies=permissions)
-async def edit_consumption(
+def edit_consumption(
     consumption_id: int,
     update: ConsumptionUpdate,
     db: Session = Depends(get_db),
@@ -315,12 +339,12 @@ def _soft_delete_consumptions(ids: list[int], db: Session):
 
 
 @router.delete("/{consumption_id}", dependencies=permissions)
-async def delete_consumption(consumption_id: int, db: Session = Depends(get_db)):
+def delete_consumption(consumption_id: int, db: Session = Depends(get_db)):
     return _soft_delete_consumptions([consumption_id], db)
 
 
 @router.delete("/", dependencies=permissions)
-async def delete_consumptions(
+def delete_consumptions(
     payload: ConsumptionBulkDelete,
     db: Session = Depends(get_db),
 ):

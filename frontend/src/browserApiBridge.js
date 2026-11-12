@@ -72,6 +72,48 @@ const workspaceSections = {
     updatePath: (id) => `/daily-dispatch/${id}`,
     deletePath: (id) => `/daily-dispatch/${id}`,
   },
+  purchaseOrderReceived: {
+    roles: ["admin", "supervisor"],
+    listPath: "/purchase-orders-received/",
+    createPath: "/purchase-orders-received/",
+    updatePath: (id) => `/purchase-orders-received/${id}`,
+    deletePath: (id) => `/purchase-orders-received/${id}`,
+  },
+  purchaseOrderOut: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-inputs/",
+  },
+  dailyConsumption: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/consumption/",
+    createPath: "/consumption/",
+    updatePath: (id) => `/consumption/${id}`,
+    deletePath: (id) => `/consumption/${id}`,
+  },
+  dailyInputReport: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-inputs/",
+  },
+  dailyDispatchReport: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-dispatch/",
+  },
+  dailyConsumptionReport: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/consumption/",
+  },
+  poReceivedPending: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/purchase-orders-received/",
+  },
+  poOutPending: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-inputs/",
+  },
+  stockAsOn: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/get-products",
+  },
 };
 
 export function getBackendApiUrl() {
@@ -318,8 +360,48 @@ if (typeof window !== "undefined" && !window.desktop) {
     },
 
     listWorkspaceSection: async (section) => {
+      const REPORT_SECTIONS = [
+        "dailyInputReport",
+        "dailyDispatchReport",
+        "dailyConsumptionReport",
+        "poReceivedPending",
+        "poOutPending",
+        "stockAsOn",
+      ];
+
+      if (section === "stockAsOn") {
+        const [prodsRes, rmsRes] = await Promise.all([
+          requestWorkspaceApi("/get-products", "GET"),
+          requestWorkspaceApi("/get-raw-material", "GET"),
+        ]);
+        const prods = (prodsRes.ok && Array.isArray(prodsRes.data))
+          ? prodsRes.data.map((p) => ({
+              ...p,
+              item_type: `Product (${p.type || "Element"})`,
+              item_name: p.name,
+              opening: p.open_balance,
+              closing: p.close_balance,
+              consumed_dispatched: p.consumption,
+            }))
+          : [];
+        const rms = (rmsRes.ok && Array.isArray(rmsRes.data))
+          ? rmsRes.data.map((r) => ({
+              ...r,
+              item_type: "Raw Material",
+              item_name: r.material_name,
+              opening: r.open_balance,
+              closing: r.close_balance,
+              consumed_dispatched: r.consumption,
+            }))
+          : [];
+        return { ok: true, data: [...prods, ...rms] };
+      }
+
       const cfg = workspaceSections[section];
-      if (!cfg) return { ok: false, error: "Section not found." };
+      if (!cfg) {
+        if (REPORT_SECTIONS.includes(section)) return { ok: true, data: [] };
+        return { ok: false, error: "Section not found." };
+      }
       return requestWorkspaceApi(cfg.listPath, "GET");
     },
 

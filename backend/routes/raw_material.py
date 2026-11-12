@@ -17,9 +17,9 @@ router = APIRouter(tags=["raw materials"])
 @router.get(
     "/get-raw-material",
     response_model=list[RawMaterialRead],
-    dependencies=[Depends(require_roles("admin", "supervisor"))],
+    dependencies=[Depends(require_roles("admin", "supervisor", "employee"))],
 )
-async def get_raw_materials(db: Session = Depends(get_db)):
+def get_raw_materials(db: Session = Depends(get_db)):
     return db.scalars(
         select(RawMaterial)
         .where(RawMaterial.deleted_at.is_(None))
@@ -33,7 +33,7 @@ async def get_raw_materials(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db)):
+def add_raw_material(material: RawMaterialCreate, db: Session = Depends(get_db)):
     data = material.model_dump()
     has_zach = bool(data.get("has_zach_code") or (data.get("zach_code") and str(data.get("zach_code")).strip()))
     if has_zach:
@@ -68,7 +68,7 @@ async def add_raw_material(material: RawMaterialCreate, db: Session = Depends(ge
     response_model=RawMaterialRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def edit_raw_material(
+def edit_raw_material(
     material_id: int,
     update: RawMaterialUpdate,
     db: Session = Depends(get_db),
@@ -124,7 +124,7 @@ async def edit_raw_material(
     response_model=RawMaterialRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def delete_raw_material(material_id: int, db: Session = Depends(get_db)):
+def delete_raw_material(material_id: int, db: Session = Depends(get_db)):
     material = db.query(RawMaterial).filter(
         RawMaterial.id == material_id,
         RawMaterial.deleted_at.is_(None),

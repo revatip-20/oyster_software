@@ -20,7 +20,7 @@ class ProcessBalanceRequest(BaseModel):
     "/status",
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def get_balance_status(db: Session = Depends(get_db)):
+def get_balance_status(db: Session = Depends(get_db)):
     try:
         return check_month_end_status(db)
     except Exception as error:
@@ -31,7 +31,7 @@ async def get_balance_status(db: Session = Depends(get_db)):
     "/process",
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def process_month_end_balance(
+def process_month_end_balance(
     payload: Optional[ProcessBalanceRequest] = None,
     db: Session = Depends(get_db),
 ):

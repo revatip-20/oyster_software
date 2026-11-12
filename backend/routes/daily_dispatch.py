@@ -17,15 +17,21 @@ from schemas.daily_dispatch_schema import (
     DailyDispatchRead,
     DailyDispatchUpdate,
 )
-from services.code_generator import get_next_resource_code
+from services.code_generator import get_next_out_dc_no, get_next_resource_code
 from services.stock_service import handle_daily_dispatch_consumption
 
 router = APIRouter(prefix="/daily-dispatch", tags=["daily dispatch"])
+read_permissions = [Depends(require_roles("admin", "supervisor", "employee"))]
 permissions = [Depends(require_roles("admin", "supervisor"))]
 
 
-@router.get("/", response_model=list[DailyDispatchRead], dependencies=permissions)
-async def get_daily_dispatches(db: Session = Depends(get_db)):
+@router.get("/next-out-dc-no", dependencies=read_permissions)
+def get_next_out_dc_no_route(out_dc_date: str | None = None, db: Session = Depends(get_db)):
+    return {"out_dc_no": get_next_out_dc_no(db, out_dc_date)}
+
+
+@router.get("/", response_model=list[DailyDispatchRead], dependencies=read_permissions)
+def get_daily_dispatches(db: Session = Depends(get_db)):
     return db.scalars(
         select(DailyDispatch)
         .where(DailyDispatch.deleted_at.is_(None))
@@ -34,7 +40,7 @@ async def get_daily_dispatches(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=DailyDispatchRead, status_code=status.HTTP_201_CREATED)
-async def add_daily_dispatch(
+def add_daily_dispatch(
     entry: DailyDispatchCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "supervisor")),
@@ -80,6 +86,9 @@ async def add_daily_dispatch(
         if prd:
             data["item"] = prd.name
 
+    if not data.get("out_dc_no"):
+        data["out_dc_no"] = get_next_out_dc_no(db, data.get("out_dc_date"))
+
     try:
         code = get_next_resource_code(db, DailyDispatch, DailyDispatch.code, "DD")
     except Exception:
@@ -105,7 +114,7 @@ def _get_dispatch_qty(record: DailyDispatch) -> float:
 
 
 @router.patch("/{dispatch_id}", response_model=DailyDispatchRead, dependencies=permissions)
-async def edit_daily_dispatch(
+def edit_daily_dispatch(
     dispatch_id: int,
     update: DailyDispatchUpdate,
     db: Session = Depends(get_db),
@@ -138,7 +147,7 @@ async def edit_daily_dispatch(
 
 
 @router.delete("/{dispatch_id}", status_code=status.HTTP_200_OK, dependencies=permissions)
-async def delete_daily_dispatch(dispatch_id: int, db: Session = Depends(get_db)):
+def delete_daily_dispatch(dispatch_id: int, db: Session = Depends(get_db)):
     record = db.query(DailyDispatch).filter(
         DailyDispatch.id == dispatch_id,
         DailyDispatch.deleted_at.is_(None),
@@ -156,7 +165,7 @@ async def delete_daily_dispatch(dispatch_id: int, db: Session = Depends(get_db))
 
 
 @router.delete("/", status_code=status.HTTP_200_OK, dependencies=permissions)
-async def bulk_delete_daily_dispatches(
+def bulk_delete_daily_dispatches(
     payload: DailyDispatchBulkDelete,
     db: Session = Depends(get_db),
 ):

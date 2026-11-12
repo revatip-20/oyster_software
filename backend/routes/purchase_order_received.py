@@ -18,11 +18,12 @@ from schemas.purchase_order_received_schema import (
 from services.code_generator import get_next_resource_code
 
 router = APIRouter(prefix="/purchase-orders-received", tags=["purchase order received"])
+read_permissions = [Depends(require_roles("admin", "supervisor", "employee"))]
 permissions = [Depends(require_roles("admin", "supervisor"))]
 
 
-@router.get("/", response_model=list[PurchaseOrderReceivedRead], dependencies=permissions)
-async def get_purchase_orders_received(db: Session = Depends(get_db)):
+@router.get("/", response_model=list[PurchaseOrderReceivedRead], dependencies=read_permissions)
+def get_purchase_orders_received(db: Session = Depends(get_db)):
     return db.scalars(
         select(PurchaseOrderReceived)
         .where(PurchaseOrderReceived.deleted_at.is_(None))
@@ -31,7 +32,7 @@ async def get_purchase_orders_received(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=PurchaseOrderReceivedRead, status_code=status.HTTP_201_CREATED)
-async def add_purchase_order_received(
+def add_purchase_order_received(
     entry: PurchaseOrderReceivedCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "supervisor")),
@@ -60,7 +61,7 @@ async def add_purchase_order_received(
 
 
 @router.patch("/{po_id}", response_model=PurchaseOrderReceivedRead, dependencies=permissions)
-async def edit_purchase_order_received(
+def edit_purchase_order_received(
     po_id: int,
     update: PurchaseOrderReceivedUpdate,
     db: Session = Depends(get_db),
@@ -90,7 +91,7 @@ async def edit_purchase_order_received(
 
 
 @router.delete("/{po_id}", status_code=status.HTTP_200_OK, dependencies=permissions)
-async def delete_purchase_order_received(po_id: int, db: Session = Depends(get_db)):
+def delete_purchase_order_received(po_id: int, db: Session = Depends(get_db)):
     record = db.query(PurchaseOrderReceived).filter(
         PurchaseOrderReceived.id == po_id,
         PurchaseOrderReceived.deleted_at.is_(None),
@@ -106,7 +107,7 @@ async def delete_purchase_order_received(po_id: int, db: Session = Depends(get_d
 
 
 @router.delete("/", status_code=status.HTTP_200_OK, dependencies=permissions)
-async def bulk_delete_purchase_orders_received(
+def bulk_delete_purchase_orders_received(
     payload: PurchaseOrderReceivedBulkDelete,
     db: Session = Depends(get_db),
 ):

@@ -104,7 +104,7 @@ class DailyDispatchFields(BaseModel):
         return _parse_date_or_none(value)
 
     @field_validator(
-        "quantity", "out_quantity", "ok", "reject",
+        "quantity", "out_quantity", "ok", "reject", "rework", "reject_defect", "defect_number",
         mode="before",
     )
     @classmethod

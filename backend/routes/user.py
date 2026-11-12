@@ -33,7 +33,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
+def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -58,7 +58,7 @@ async def get_current_user(
 
 
 def require_roles(*allowed_roles: str):
-    async def check_role(current_user: User = Depends(get_current_user)) -> User:
+    def check_role(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -103,7 +103,7 @@ def create_user(
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(
+def login(
     credentials: LoginRequest,
     db: Session = Depends(get_db),
 ):
@@ -128,7 +128,7 @@ async def login(
 
 
 @router.post("/refresh", response_model=LoginResponse)
-async def refresh_access_token(
+def refresh_access_token(
     request: RefreshRequest,
     db: Session = Depends(get_db),
 ):
@@ -160,7 +160,7 @@ async def refresh_access_token(
     response_model=list[UserRead],
     dependencies=[Depends(require_roles("admin"))],
 )
-async def get_supervisors(db: Session = Depends(get_db)):
+def get_supervisors(db: Session = Depends(get_db)):
     return (
         db.query(User)
         .filter(User.role == "supervisor", User.deleted_at.is_(None))
@@ -179,7 +179,7 @@ async def get_supervisors(db: Session = Depends(get_db)):
     response_model=list[UserRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def get_employees(db: Session = Depends(get_db)):
+def get_employees(db: Session = Depends(get_db)):
     return (
         db.query(User)
         .filter(User.role == "employee", User.deleted_at.is_(None))
@@ -194,7 +194,7 @@ async def get_employees(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin"))],
 )
-async def add_supervisor(
+def add_supervisor(
     user: UserCreate,
     db: Session = Depends(get_db),
 ):
@@ -207,7 +207,7 @@ async def add_supervisor(
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def add_employee(
+def add_employee(
     user: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
@@ -219,7 +219,7 @@ async def add_employee(
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin"))],
 )
-async def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = Depends(get_db)):
+def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = Depends(get_db)):
     supervisor = db.query(User).filter(
         User.id == user_id,
         User.role == "supervisor",
@@ -260,7 +260,7 @@ async def edit_supervisor(user_id: int, update: SupervisorUpdate, db: Session = 
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin"))],
 )
-async def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
+def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
     supervisor = db.query(User).filter(
         User.id == user_id,
         User.role == "supervisor",
@@ -286,7 +286,7 @@ async def delete_supervisor(user_id: int, db: Session = Depends(get_db)):
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depends(get_db)):
+def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depends(get_db)):
     employee = db.query(User).filter(
         User.id == user_id,
         User.role == "employee",
@@ -324,7 +324,7 @@ async def edit_employee(user_id: int, update: EmployeeUpdate, db: Session = Depe
     response_model=UserRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def delete_employee(user_id: int, db: Session = Depends(get_db)):
+def delete_employee(user_id: int, db: Session = Depends(get_db)):
     employee = db.query(User).filter(
         User.id == user_id,
         User.role == "employee",

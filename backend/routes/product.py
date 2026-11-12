@@ -16,7 +16,13 @@ from services.stock_service import get_product_bom_raw_materials
 router = APIRouter(tags=["products"])
 
 
-def _populate_product_read(p: Product, db: Session) -> ProductRead:
+def _populate_product_read(
+    p: Product,
+    db: Session,
+    rm_lookup: dict[int, RawMaterial] | None = None,
+    prod_lookup: dict[int, Product] | None = None,
+    prms_by_product: dict[int, list[ProductRawMaterial]] | None = None,
+) -> ProductRead:
     try:
         item = ProductRead.model_validate(p)
     except Exception:
@@ -43,10 +49,15 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
         )
     raw_material_items = []
 
-    # 1. From relationship product_raw_materials
-    if p.product_raw_materials:
-        for prm in p.product_raw_materials:
-            rm = prm.raw_material or db.query(RawMaterial).filter(RawMaterial.id == prm.raw_material_id).first()
+    # 1. From relationship product_raw_materials or preloaded map
+    direct_prms = prms_by_product.get(p.id) if prms_by_product is not None else p.product_raw_materials
+    if direct_prms:
+        for prm in direct_prms:
+            rm = (
+                rm_lookup.get(prm.raw_material_id)
+                if rm_lookup is not None
+                else (prm.raw_material or db.query(RawMaterial).filter(RawMaterial.id == prm.raw_material_id).first())
+            )
             if rm:
                 qty_val = float(prm.quantity) if prm.quantity is not None else 1.0
                 raw_material_items.append({
@@ -58,11 +69,13 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
                 })
     # 2. Or from raw_material_ids JSON
     elif p.raw_material_ids and isinstance(p.raw_material_ids, list):
-        rms = db.query(RawMaterial).filter(RawMaterial.id.in_(p.raw_material_ids)).all()
-        rm_map = {rm.id: rm for rm in rms}
         for rid in p.raw_material_ids:
-            if rid in rm_map:
-                rm = rm_map[rid]
+            try:
+                rid_int = int(rid)
+            except (ValueError, TypeError):
+                continue
+            rm = rm_lookup.get(rid_int) if rm_lookup is not None else db.query(RawMaterial).filter(RawMaterial.id == rid_int).first()
+            if rm:
                 raw_material_items.append({
                     "raw_material_id": rm.id,
                     "quantity": 1.0,
@@ -71,22 +84,26 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
                     "unit": rm.unit,
                 })
     # 3. Or fallback to raw_material
-    elif p.raw_material:
-        rm = p.raw_material
-        raw_material_items.append({
-            "raw_material_id": rm.id,
-            "quantity": 1.0,
-            "material_name": rm.material_name,
-            "code": rm.code,
-            "unit": rm.unit,
-        })
+    elif p.raw_material or p.raw_material_id:
+        rm = (
+            rm_lookup.get(p.raw_material_id)
+            if (rm_lookup is not None and p.raw_material_id)
+            else (p.raw_material or (db.query(RawMaterial).filter(RawMaterial.id == p.raw_material_id).first() if p.raw_material_id else None))
+        )
+        if rm:
+            raw_material_items.append({
+                "raw_material_id": rm.id,
+                "quantity": 1.0,
+                "material_name": rm.material_name,
+                "code": rm.code,
+                "unit": rm.unit,
+            })
 
     item.raw_materials = raw_material_items
     item.raw_material_ids = [it["raw_material_id"] for it in raw_material_items]
     item.raw_material_names = [it["material_name"] for it in raw_material_items if it.get("material_name")]
 
     # Formatted description with each raw material's quantity & unit
-    # e.g., "Wire (2 mtrs), Core (1 num)"
     formatted_labels = []
     for it in raw_material_items:
         mname = it.get("material_name") or f"Material #{it['raw_material_id']}"
@@ -106,13 +123,13 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
 
     # Resolve element and welded_element
     if p.element_id:
-        el = p.element or db.query(Product).filter(Product.id == p.element_id).first()
+        el = prod_lookup.get(p.element_id) if prod_lookup is not None else (p.element or db.query(Product).filter(Product.id == p.element_id).first())
         if el:
             item.element_id = el.id
             item.element_name = el.name
             item.element_code = el.code
     if p.welded_element_id:
-        we = p.welded_element or db.query(Product).filter(Product.id == p.welded_element_id).first()
+        we = prod_lookup.get(p.welded_element_id) if prod_lookup is not None else (p.welded_element or db.query(Product).filter(Product.id == p.welded_element_id).first())
         if we:
             item.welded_element_id = we.id
             item.welded_element_name = we.name
@@ -132,13 +149,16 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
         item.component_name = None
 
     try:
-        bom_map = get_product_bom_raw_materials(p.id, db)
+        bom_map = get_product_bom_raw_materials(
+            p.id,
+            db,
+            prod_lookup=prod_lookup,
+            prms_by_product=prms_by_product,
+        )
         bom_items = []
         if bom_map:
-            rms = db.query(RawMaterial).filter(RawMaterial.id.in_(bom_map.keys())).all()
-            rm_lookup = {rm.id: rm for rm in rms}
             for rm_id, qty in bom_map.items():
-                rm = rm_lookup.get(rm_id)
+                rm = rm_lookup.get(rm_id) if rm_lookup is not None else db.query(RawMaterial).filter(RawMaterial.id == rm_id).first()
                 if rm:
                     bom_items.append({
                         "raw_material_id": rm.id,
@@ -157,15 +177,38 @@ def _populate_product_read(p: Product, db: Session) -> ProductRead:
 @router.get(
     "/get-products",
     response_model=list[ProductRead],
-    dependencies=[Depends(require_roles("admin", "supervisor"))],
+    dependencies=[Depends(require_roles("admin", "supervisor", "employee"))],
 )
-async def get_products(db: Session = Depends(get_db)):
+def get_products(db: Session = Depends(get_db)):
     products = db.scalars(
         select(Product)
         .where(Product.deleted_at.is_(None))
         .order_by(Product.id)
     ).all()
-    return [_populate_product_read(p, db) for p in products]
+    if not products:
+        return []
+
+    # Preload lookups to eliminate N+1 queries over remote Supabase connection
+    rms = db.scalars(select(RawMaterial).where(RawMaterial.deleted_at.is_(None))).all()
+    rm_lookup = {r.id: r for r in rms}
+
+    all_prms = db.scalars(select(ProductRawMaterial)).all()
+    prms_by_product: dict[int, list[ProductRawMaterial]] = {}
+    for prm in all_prms:
+        prms_by_product.setdefault(prm.product_id, []).append(prm)
+
+    prod_lookup = {p.id: p for p in products}
+
+    return [
+        _populate_product_read(
+            p,
+            db,
+            rm_lookup=rm_lookup,
+            prod_lookup=prod_lookup,
+            prms_by_product=prms_by_product,
+        )
+        for p in products
+    ]
 
 
 @router.post(
@@ -174,7 +217,7 @@ async def get_products(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
+def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
     data = product_in.model_dump()
     raw_materials_input = data.pop("raw_materials", None)
     raw_material_ids = data.pop("raw_material_ids", None) or []
@@ -253,7 +296,7 @@ async def add_product(product_in: ProductCreate, db: Session = Depends(get_db)):
     response_model=ProductRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def edit_product(product_id: int, update: ProductUpdate, db: Session = Depends(get_db)):
+def edit_product(product_id: int, update: ProductUpdate, db: Session = Depends(get_db)):
     product = db.query(Product).filter(
         Product.id == product_id,
         Product.deleted_at.is_(None),
@@ -359,7 +402,7 @@ async def edit_product(product_id: int, update: ProductUpdate, db: Session = Dep
     response_model=ProductRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def delete_product(product_id: int, db: Session = Depends(get_db)):
+def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(
         Product.id == product_id,
         Product.deleted_at.is_(None),

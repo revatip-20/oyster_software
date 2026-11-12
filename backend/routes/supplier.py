@@ -16,9 +16,9 @@ router = APIRouter(tags=["suppliers"])
 @router.get(
     "/get-suppliers",
     response_model=list[SupplierRead],
-    dependencies=[Depends(require_roles("admin", "supervisor"))],
+    dependencies=[Depends(require_roles("admin", "supervisor", "employee"))],
 )
-async def get_suppliers(db: Session = Depends(get_db)):
+def get_suppliers(db: Session = Depends(get_db)):
     return db.scalars(
         select(Supplier)
         .where(Supplier.deleted_at.is_(None))
@@ -32,7 +32,7 @@ async def get_suppliers(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def add_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
+def add_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
     data = supplier.model_dump()
     code = get_next_resource_code(db, Supplier, Supplier.code, "S")
     new_supplier = Supplier(code=code, **data)
@@ -51,7 +51,7 @@ async def add_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
     response_model=SupplierRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def edit_supplier(supplier_id: int, update: SupplierUpdate, db: Session = Depends(get_db)):
+def edit_supplier(supplier_id: int, update: SupplierUpdate, db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(
         Supplier.id == supplier_id,
         Supplier.deleted_at.is_(None),
@@ -80,7 +80,7 @@ async def edit_supplier(supplier_id: int, update: SupplierUpdate, db: Session = 
     response_model=SupplierRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
+def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(
         Supplier.id == supplier_id,
         Supplier.deleted_at.is_(None),

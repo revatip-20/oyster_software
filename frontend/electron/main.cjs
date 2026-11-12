@@ -300,6 +300,41 @@ const workspaceSections = {
     updatePath: (id) => `/purchase-orders-received/${id}`,
     deletePath: (id) => `/purchase-orders-received/${id}`,
   },
+  purchaseOrderOut: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-inputs/",
+  },
+  dailyConsumption: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/consumption/",
+    createPath: "/consumption/",
+    updatePath: (id) => `/consumption/${id}`,
+    deletePath: (id) => `/consumption/${id}`,
+  },
+  dailyInputReport: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-inputs/",
+  },
+  dailyDispatchReport: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-dispatch/",
+  },
+  dailyConsumptionReport: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/consumption/",
+  },
+  poReceivedPending: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/purchase-orders-received/",
+  },
+  poOutPending: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/daily-inputs/",
+  },
+  stockAsOn: {
+    roles: ["admin", "supervisor", "employee"],
+    listPath: "/get-products",
+  },
 };
 
 async function requestWorkspaceApi(path, method, body) {
@@ -392,7 +427,20 @@ async function requestWorkspaceApi(path, method, body) {
   }
 }
 
+const REPORT_SECTIONS = [
+  "dailyInputReport",
+  "dailyDispatchReport",
+  "dailyConsumptionReport",
+  "poReceivedPending",
+  "poOutPending",
+  "stockAsOn",
+];
+
 function canAccessSection(section) {
+  // All users have permission to view report sections (no validation restrictions)
+  if (REPORT_SECTIONS.includes(section)) {
+    return true;
+  }
   return Boolean(
     authenticatedSession
       && Object.hasOwn(workspaceSections, section)
@@ -408,7 +456,44 @@ ipcMain.handle("workspace:list", async (_event, section) => {
   if (!canAccessSection(section)) {
     return { ok: false, error: "You do not have permission to view this section." };
   }
-  return requestWorkspaceApi(workspaceSections[section].listPath, "GET");
+
+  // Stock as on report combines products and raw materials
+  if (section === "stockAsOn") {
+    const [prodsRes, rmsRes] = await Promise.all([
+      requestWorkspaceApi("/get-products", "GET"),
+      requestWorkspaceApi("/get-raw-material", "GET"),
+    ]);
+    const prods = (prodsRes.ok && Array.isArray(prodsRes.data))
+      ? prodsRes.data.map((p) => ({
+          ...p,
+          item_type: `Product (${p.type || "Element"})`,
+          item_name: p.name,
+          opening: p.open_balance,
+          closing: p.close_balance,
+          consumed_dispatched: p.consumption,
+        }))
+      : [];
+    const rms = (rmsRes.ok && Array.isArray(rmsRes.data))
+      ? rmsRes.data.map((r) => ({
+          ...r,
+          item_type: "Raw Material",
+          item_name: r.material_name,
+          opening: r.open_balance,
+          closing: r.close_balance,
+          consumed_dispatched: r.consumption,
+        }))
+      : [];
+    return { ok: true, data: [...prods, ...rms] };
+  }
+
+  const cfg = workspaceSections[section];
+  if (!cfg) {
+    if (REPORT_SECTIONS.includes(section)) {
+      return { ok: true, data: [] };
+    }
+    return { ok: false, error: "Section not found." };
+  }
+  return requestWorkspaceApi(cfg.listPath, "GET");
 });
 
 ipcMain.handle("workspace:create", async (_event, section, record) => {
@@ -628,7 +713,7 @@ ipcMain.handle("workspace:export-pdf", async (event, section, htmlContent, title
       printBackground: true,
       pageSize: "A4",
       landscape: true,
-      margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+      margins: { top: 0.25, bottom: 0.25, left: 0.25, right: 0.25 },
     });
     printWin.destroy();
 
@@ -781,12 +866,13 @@ ipcMain.handle("workspace:print-preview", async (event, htmlContent, title) => {
       color: #0f172a;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
       border-radius: 2px;
-      padding: 12mm 15mm;
+      padding: 6mm 8mm;
       width: 297mm;
       min-height: 210mm;
       box-sizing: border-box;
       transform-origin: top center;
       transition: transform 0.2s ease;
+      overflow-x: auto;
     }
 
     @media print {
@@ -812,10 +898,11 @@ ipcMain.handle("workspace:print-preview", async (event, htmlContent, title) => {
         width: 100% !important;
         min-height: auto !important;
         transform: none !important;
+        overflow: visible !important;
       }
       @page {
         size: A4 landscape;
-        margin: 10mm;
+        margin: 6mm;
       }
     }
   </style>
@@ -861,16 +948,22 @@ ipcMain.handle("workspace:print-preview", async (event, htmlContent, title) => {
       paper.style.transform = "scale(" + val + ")";
       document.querySelectorAll(".preview-zoom-btn").forEach(btn => btn.classList.remove("active"));
       if (val === 1.0) {
-        document.getElementById("zoom-100").classList.add("active");
+        const z100 = document.getElementById("zoom-100");
+        if (z100) z100.classList.add("active");
       }
     }
 
     function fitWidth() {
-      const containerWidth = container.clientWidth - 60;
+      const containerWidth = container.clientWidth - 40;
       const paperWidth = paper.offsetWidth || 1122;
-      const ratio = Math.min(1.2, Math.max(0.4, containerWidth / paperWidth));
+      const ratio = Math.min(1.2, Math.max(0.3, containerWidth / paperWidth));
       setZoom(Math.round(ratio * 100) / 100);
     }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      setTimeout(fitWidth, 60);
+    });
+    window.addEventListener("resize", fitWidth);
   </script>
 </body>
 </html>`;

@@ -12,13 +12,19 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg2://postgres:postgres@localhost:5432/oyster_db",
 )
 
-# Supabase connection pooler (aws-0-*.pooler.supabase.com) in session mode (port 5432)
-# has a strict limit of 15 connections total across all clients.
-# Keep SQLAlchemy pool small (3 connections, max 2 overflow = 5 total)
-# to avoid exceeding the pooler limit.
-is_supabase = "pooler.supabase.com" in DATABASE_URL or "supabase.co" in DATABASE_URL
-default_pool_size = 3 if is_supabase else 5
-default_max_overflow = 2 if is_supabase else 5
+# If connecting to Supabase connection pooler, prefer port 6543 (transaction mode).
+# Port 5432 is session mode which has a strict limit of 15 connections total (EMAXCONNSESSION).
+# Port 6543 is transaction mode which supports high concurrency without connection exhaustion.
+if "pooler.supabase.com:5432" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("pooler.supabase.com:5432", "pooler.supabase.com:6543")
+
+is_supabase = "://supabase.com" in DATABASE_URL or "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL
+
+# --- OPTIMIZED FOR SUPABASE NANO / FREE TIER ---
+# We lower the pool footprint so a local server doesn't choke your 15-connection limit.
+default_pool_size = 4 if is_supabase else 10
+default_max_overflow = 2 if is_supabase else 10
+default_pool_timeout = 30
 
 engine = create_engine(
     DATABASE_URL,
@@ -26,7 +32,7 @@ engine = create_engine(
     max_overflow=int(os.getenv("DB_MAX_OVERFLOW", str(default_max_overflow))),
     pool_pre_ping=True,
     pool_recycle=300,
-    pool_timeout=15,
+    pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", str(default_pool_timeout))),
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -572,8 +578,8 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
-    except Exception:
-        db.rollback()
-        raise
     finally:
+        # Explicitly roll back or commit any uncompleted read states
+        # so the transaction pooler proxy drops the client link instantly.
+        db.rollback()
         db.close()

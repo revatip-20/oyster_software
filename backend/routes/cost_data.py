@@ -77,7 +77,7 @@ def compute_basic_cost_data(data: dict) -> dict:
     response_model=list[CostDataRead],
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def get_cost_data_list(db: Session = Depends(get_db)):
+def get_cost_data_list(db: Session = Depends(get_db)):
     return db.scalars(
         select(CostData)
         .where(CostData.deleted_at.is_(None))
@@ -91,7 +91,7 @@ async def get_cost_data_list(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def add_cost_data(cost_data_in: CostDataCreate, db: Session = Depends(get_db)):
+def add_cost_data(cost_data_in: CostDataCreate, db: Session = Depends(get_db)):
     data = cost_data_in.model_dump()
     data = compute_basic_cost_data(data)
     code = get_next_resource_code(db, CostData, CostData.code, "CD")
@@ -114,7 +114,7 @@ async def add_cost_data(cost_data_in: CostDataCreate, db: Session = Depends(get_
     response_model=CostDataRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def edit_cost_data(cost_data_id: int, update: CostDataUpdate, db: Session = Depends(get_db)):
+def edit_cost_data(cost_data_id: int, update: CostDataUpdate, db: Session = Depends(get_db)):
     cost_data = db.query(CostData).filter(
         CostData.id == cost_data_id,
         CostData.deleted_at.is_(None),
@@ -167,7 +167,7 @@ async def edit_cost_data(cost_data_id: int, update: CostDataUpdate, db: Session 
     response_model=CostDataRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def delete_cost_data(cost_data_id: int, db: Session = Depends(get_db)):
+def delete_cost_data(cost_data_id: int, db: Session = Depends(get_db)):
     cost_data = db.query(CostData).filter(
         CostData.id == cost_data_id,
         CostData.deleted_at.is_(None),

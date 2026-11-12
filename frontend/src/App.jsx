@@ -1,6 +1,15 @@
 import React, { Component, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { navigation, sections, INDIAN_STATES } from "./workspace.js";
 
+const DASHBOARD_EXCLUDED_SECTIONS = new Set([
+  "dashboard",
+  "dailyConsumption",
+  "dailyInputReport",
+  "dailyDispatchReport",
+  "dailyConsumptionReport",
+  "costData",
+]);
+
 function App() {
   const [user, setUser] = useState(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -2457,6 +2466,506 @@ function toIsoDateString(val) {
   return s;
 }
 
+const DEFECT_OPTIONS = [
+  "air bubble",
+  "distorted terminal",
+  "dirty box",
+  "film visible",
+  "side marking problem",
+  "under filling",
+  "box damage",
+  "blacklash can",
+  "resin color variation",
+  "scrathes on can",
+  "other",
+];
+
+function formatDefectsSummary(defects) {
+  if (!Array.isArray(defects) || defects.length === 0) return "—";
+  return defects
+    .map((d) => {
+      const typeName = d.defect_type === "other" && d.defect_other ? `Other (${d.defect_other})` : (d.defect_type || "Defect");
+      const parts = [];
+      if (d.rework !== "" && d.rework !== null && d.rework !== undefined) {
+        parts.push(`Rework: ${Math.round(Number(d.rework))}`);
+      }
+      if (d.reject !== "" && d.reject !== null && d.reject !== undefined) {
+        parts.push(`Reject: ${Math.round(Number(d.reject))}`);
+      }
+      const details = parts.join(", ");
+      return details ? `${typeName} (${details})` : typeName;
+    })
+    .join("\n");
+}
+
+function renderRejectionDetailItem(line, index) {
+  if (!line || line === "—" || line === "-") return null;
+  const str = String(line).trim();
+  const match = str.match(/^(.*?)\s*\((.*?)\)$/);
+  if (!match) {
+    const rejMatch = str.match(/Reject:\s*(\d+)/i) || str.match(/(\d+)\s*rej/i);
+    const rewMatch = str.match(/Rework:\s*(\d+)/i) || str.match(/(\d+)\s*rew/i);
+    if (rejMatch || rewMatch) {
+      const rej = rejMatch ? rejMatch[1] : null;
+      const rew = rewMatch ? rewMatch[1] : null;
+      return (
+        <div key={index} className="rejection-detail-line">
+          <span className="rejection-tags-row">
+            {rew !== null && (
+              <span className="rejection-tag rework-tag">
+                <span className="tag-label">Rework:</span> <span className="tag-val">{rew}</span>
+              </span>
+            )}
+            {rej !== null && (
+              <span className="rejection-tag reject-tag">
+                <span className="tag-label">Reject:</span> <span className="tag-val">{rej}</span>
+              </span>
+            )}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div key={index} className="rejection-detail-line">
+        <span className="rejection-defect-name">{str}</span>
+      </div>
+    );
+  }
+
+  const defectName = match[1].trim();
+  const details = match[2].trim();
+
+  let rej = null;
+  let rew = null;
+  const rejMatch = details.match(/Reject:\s*(\d+)/i) || details.match(/(\d+)\s*rej/i);
+  if (rejMatch) rej = rejMatch[1];
+  const rewMatch = details.match(/Rework:\s*(\d+)/i) || details.match(/(\d+)\s*rew/i);
+  if (rewMatch) rew = rewMatch[1];
+
+  return (
+    <div key={index} className="rejection-detail-line">
+      <span className="rejection-defect-name">{defectName}</span>
+      {(rej !== null || rew !== null) && (
+        <span className="rejection-tags-row">
+          {rew !== null && (
+            <span className="rejection-tag rework-tag">
+              <span className="tag-label">Rework:</span> <span className="tag-val">{rew}</span>
+            </span>
+          )}
+          {rej !== null && (
+            <span className="rejection-tag reject-tag">
+              <span className="tag-label">Reject:</span> <span className="tag-val">{rej}</span>
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RejectionDetailsModal({
+  isOpen,
+  targetRow,
+  onClose,
+  onSave,
+}) {
+  const [draftDefects, setDraftDefects] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen || !targetRow) return;
+    const initial = Array.isArray(targetRow.defects) && targetRow.defects.length > 0
+      ? targetRow.defects.map((d) => ({ ...d }))
+      : [{ defect_type: "air bubble", defect_other: "", rework: targetRow.rework ?? "", reject: targetRow.reject ?? "" }];
+    setDraftDefects(initial);
+  }, [isOpen, targetRow]);
+
+  if (!isOpen || !targetRow) return null;
+
+  const handleDefectChange = (index, field, value) => {
+    setDraftDefects((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleAddDefect = () => {
+    setDraftDefects((prev) => [
+      ...prev,
+      { defect_type: "air bubble", defect_other: "", rework: "", reject: "" },
+    ]);
+  };
+
+  const handleRemoveDefect = (index) => {
+    setDraftDefects((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const totalReject = Math.round(draftDefects.reduce((acc, d) => {
+    const v = parseInt(d.reject, 10);
+    return acc + (!isNaN(v) ? v : 0);
+  }, 0));
+
+  const totalRework = Math.round(draftDefects.reduce((acc, d) => {
+    const v = parseInt(d.rework, 10);
+    return acc + (!isNaN(v) ? v : 0);
+  }, 0));
+
+  const handleSave = () => {
+    const cleanDefects = draftDefects.filter((d) => {
+      const hasType = d.defect_type && String(d.defect_type).trim() !== "";
+      const hasRej = d.reject !== "" && d.reject !== null && d.reject !== undefined;
+      const hasRew = d.rework !== "" && d.rework !== null && d.rework !== undefined;
+      return hasType || hasRej || hasRew;
+    });
+    onSave(cleanDefects, totalRework, totalReject);
+  };
+
+  return (
+    <div className="rejection-modal-overlay" onClick={onClose}>
+      <div className="rejection-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="rejection-modal-header">
+          <div className="rejection-modal-title-wrap">
+            <h3>Rejection Details</h3>
+            <p className="rejection-modal-subtitle">
+              P.O. No: <strong>{targetRow.po_batch_no || "—"}</strong> | Item: <strong>{targetRow.item || "—"}</strong>
+            </p>
+          </div>
+          <button type="button" className="rejection-modal-close" onClick={onClose} title="Close">
+            ✕
+          </button>
+        </div>
+
+        <div className="rejection-modal-body">
+          <table className="rejection-defects-table">
+            <thead>
+              <tr>
+                <th style={{ width: "35px" }}>#</th>
+                <th style={{ width: "230px" }}>Defect Type</th>
+                <th>Other Defect Name</th>
+                <th style={{ width: "110px", textAlign: "right" }}>Rework</th>
+                <th style={{ width: "110px", textAlign: "right" }}>Reject</th>
+                <th style={{ width: "45px", textAlign: "center" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {draftDefects.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "16px", color: "#64748b" }}>
+                    No defects added yet. Click "+ Add Defect" below.
+                  </td>
+                </tr>
+              ) : (
+                draftDefects.map((d, dIdx) => (
+                  <tr key={dIdx}>
+                    <td style={{ color: "#64748b", fontWeight: 600 }}>{dIdx + 1}</td>
+                    <td>
+                      <select
+                        className="rejection-select"
+                        value={d.defect_type || "air bubble"}
+                        onChange={(e) => handleDefectChange(dIdx, "defect_type", e.target.value)}
+                      >
+                        {DEFECT_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      {d.defect_type === "other" ? (
+                        <input
+                          type="text"
+                          className="rejection-input"
+                          placeholder="Enter defect name..."
+                          value={d.defect_other || ""}
+                          onChange={(e) => handleDefectChange(dIdx, "defect_other", e.target.value)}
+                        />
+                      ) : (
+                        <span style={{ color: "#94a3b8", fontSize: "11px", fontStyle: "italic" }}>
+                          (Select "other" to specify)
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="rejection-input numeric"
+                        placeholder="0"
+                        value={d.rework ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^\d]/g, "");
+                          handleDefectChange(dIdx, "rework", v);
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="rejection-input numeric"
+                        placeholder="0"
+                        value={d.reject ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^\d]/g, "");
+                          handleDefectChange(dIdx, "reject", v);
+                        }}
+                      />
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        className="dispatch-remove-btn"
+                        onClick={() => handleRemoveDefect(dIdx)}
+                        title="Remove defect"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+
+          <button
+            type="button"
+            className="rejection-add-btn"
+            onClick={handleAddDefect}
+          >
+            + Add Defect
+          </button>
+
+          <div className="rejection-summary-bar">
+            <div className="rejection-summary-item">
+              <span className="rejection-summary-label">Total Defects</span>
+              <span className="rejection-summary-value">{draftDefects.length}</span>
+            </div>
+            <div className="rejection-summary-item">
+              <span className="rejection-summary-label">Total Rework</span>
+              <span className="rejection-summary-value">{totalRework}</span>
+            </div>
+            <div className="rejection-summary-item">
+              <span className="rejection-summary-label">Total Reject (Addition)</span>
+              <span className="rejection-summary-value highlight">{totalReject}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="rejection-modal-footer">
+          {draftDefects.length > 0 && (
+            <button
+              type="button"
+              className="dispatch-clear-btn"
+              onClick={() => setDraftDefects([])}
+              style={{ marginRight: "auto" }}
+            >
+              Clear Defects
+            </button>
+          )}
+          <button type="button" className="secondary-action" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="primary-action" onClick={handleSave}>
+            Apply Rejection Details
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function generateNextOutDcNo(existingDispatches, targetDate) {
+  let dateObj = new Date();
+  if (targetDate) {
+    const parsed = new Date(targetDate);
+    if (!isNaN(parsed.getTime())) {
+      dateObj = parsed;
+    }
+  }
+  const fullYear = dateObj.getFullYear();
+  const yy = String(fullYear % 100).padStart(2, "0");
+  const nextYy = String((fullYear + 1) % 100).padStart(2, "0");
+  const outputPrefix = `${yy}-${nextYy}/`;
+
+  let maxNum = 0;
+  const regex = new RegExp(`^(?:20)?${yy}-(?:20)?${nextYy}/(\\d+)$`, "i");
+
+  if (Array.isArray(existingDispatches)) {
+    for (const d of existingDispatches) {
+      if (!d) continue;
+      const val = String(d.out_dc_no || d.other_details?.out_dc_no || "").trim();
+      const match = val.match(regex);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  }
+
+  return `${outputPrefix}${maxNum + 1}`;
+}
+
+function FieldsReviewConfirmModal({
+  isOpen,
+  title = "Confirm Save",
+  onConfirm,
+  onClose,
+  isSaving = false,
+  fields = [],
+  multiItems = null,
+}) {
+  const confirmBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen && confirmBtnRef.current) {
+      confirmBtnRef.current.focus();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="save-confirm-overlay" role="presentation" onClick={onClose}>
+      <div
+        className="save-confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="save-confirm-header">
+          <div className="save-confirm-title-wrap">
+            <span className="save-confirm-icon">💾</span>
+            <div>
+              <h3>{title}</h3>
+              <p className="save-confirm-subtitle">Please verify the entered fields before saving.</p>
+            </div>
+          </div>
+          <button type="button" className="save-confirm-close-btn" onClick={onClose} title="Cancel">
+            ✕
+          </button>
+        </div>
+
+        <div className="save-confirm-body">
+          <div className="save-confirm-prompt">
+            <p className="save-confirm-question">Should I save these fields?</p>
+          </div>
+
+          {Array.isArray(fields) && fields.length > 0 && (
+            <div className="save-confirm-fields-card">
+              <table className="save-confirm-table">
+                <tbody>
+                  {fields.map((f, i) => (
+                    <tr key={i}>
+                      <td className="save-confirm-label-cell">{f.label}</td>
+                      <td className="save-confirm-value-cell">
+                        {typeof f.value === "string" && f.value.includes("\n") ? (
+                          <div className="rejection-details-stack">
+                            {f.value.split("\n").map((line, lIdx) => (
+                              <div key={lIdx} className="rejection-detail-line">{line}</div>
+                            ))}
+                          </div>
+                        ) : (
+                          <strong>{f.value !== null && f.value !== undefined && f.value !== "" ? String(f.value) : "—"}</strong>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {Array.isArray(multiItems) && multiItems.length > 0 && (
+            <div className="save-confirm-multi-items-card">
+              <div className="save-confirm-multi-title">
+                Selected Items for Dispatch ({multiItems.length})
+              </div>
+              <div className="save-confirm-items-scroll">
+                <table className="save-confirm-items-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "35px" }}>#</th>
+                      <th>P.O. No</th>
+                      <th>Item</th>
+                      <th style={{ textAlign: "right" }}>Out Qty</th>
+                      <th style={{ textAlign: "right" }}>OK</th>
+                      <th style={{ textAlign: "right" }}>Rework</th>
+                      <th style={{ textAlign: "right" }}>Total Reject</th>
+                      <th style={{ textAlign: "right" }}>Rejection %</th>
+                      <th>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {multiItems.map((item, idx) => {
+                      const outQ = item.out_quantity !== "" && item.out_quantity !== null && item.out_quantity !== undefined ? Math.round(Number(item.out_quantity)) : 0;
+                      const rej = item.reject !== "" && item.reject !== null && item.reject !== undefined ? Math.round(Number(item.reject)) : 0;
+                      const rew = item.rework !== "" && item.rework !== null && item.rework !== undefined ? Math.round(Number(item.rework)) : 0;
+                      const okVal = item.ok !== "" && item.ok !== null && item.ok !== undefined ? Math.round(Number(item.ok)) : 0;
+                      const rejPct = outQ > 0 ? `${((rej / outQ) * 100).toFixed(1)}%` : "0%";
+                      return (
+                        <tr key={idx}>
+                          <td>{idx + 1}</td>
+                          <td><strong>{item.po_batch_no || "—"}</strong></td>
+                          <td>{item.item || "—"}</td>
+                          <td style={{ textAlign: "right", fontWeight: 600 }}>{outQ}</td>
+                          <td style={{ textAlign: "right" }}>{okVal}</td>
+                          <td style={{ textAlign: "right" }}>{rew}</td>
+                          <td style={{ textAlign: "right", color: rej > 0 ? "#b91c1c" : undefined, fontWeight: 600 }}>
+                            {rej}
+                          </td>
+                          <td style={{ textAlign: "right", color: rej > 0 ? "#b91c1c" : undefined, fontWeight: 600 }}>
+                            {rejPct}
+                          </td>
+                          <td style={{ color: "#475569" }}>{item.remarks || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="save-confirm-footer">
+          <button
+            type="button"
+            className="secondary-action save-confirm-no-btn"
+            onClick={onClose}
+            disabled={isSaving}
+          >
+            No (Cancel)
+          </button>
+          <button
+            type="button"
+            ref={confirmBtnRef}
+            className="primary-action save-confirm-yes-btn"
+            onClick={onConfirm}
+            disabled={isSaving}
+          >
+            {isSaving ? "Saving…" : "Yes (Save)"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Workspace({ user, onLogout }) {
   const availableNavigation = useMemo(() => {
     return navigation
@@ -2591,6 +3100,20 @@ const toggleSelectAll = (rows) => {
   const [formValues, setFormValues] = useState({});
   const [stagedDailyInputs, setStagedDailyInputs] = useState([]);
   const [stagedDailyDispatches, setStagedDailyDispatches] = useState([]);
+  const [dailyDispatchSearchTerm, setDailyDispatchSearchTerm] = useState("");
+  const [commonOutDcNo, setCommonOutDcNo] = useState("");
+  const [commonOutDcDate, setCommonOutDcDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [activeDefectModalRowIndex, setActiveDefectModalRowIndex] = useState(null);
+  const [saveConfirmModal, setSaveConfirmModal] = useState(null);
+
+  useEffect(() => {
+    if (activeSection === "dailyDispatch") {
+      const nextDc = generateNextOutDcNo(records, commonOutDcDate);
+      if (!commonOutDcNo || /^(?:20)?\d{2}-(?:20)?\d{2}\/\d+$/i.test(commonOutDcNo)) {
+        setCommonOutDcNo(nextDc);
+      }
+    }
+  }, [activeSection, records, commonOutDcDate]);
 
   const stagedTotals = useMemo(() => {
     return stagedDailyInputs.reduce(
@@ -2618,6 +3141,22 @@ const toggleSelectAll = (rows) => {
   }, [stagedDailyInputs]);
   const [pageError, setPageError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!pageError) return;
+    const timer = setTimeout(() => {
+      setPageError("");
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [pageError]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => {
+      setNotice("");
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState([]);
   const [filterField, setFilterField] = useState("");
@@ -4103,7 +4642,9 @@ function handleFormFieldChange(name, value) {
       setNotice("");
       try {
         const accessibleSections = Object.keys(sections).filter(
-          (section) => section !== "supervisors" || user.role === "admin",
+          (section) =>
+            (section !== "supervisors" || user.role === "admin") &&
+            !DASHBOARD_EXCLUDED_SECTIONS.has(section),
         );
         const [statusResult, ...results] = await Promise.all([
           window.desktop.getBackendStatus(),
@@ -4185,13 +4726,13 @@ function handleFormFieldChange(name, value) {
   }, [activeSection, checkMonthEndStatus]);
 
   useEffect(() => {
-    const lookups = activeSection === "dailyInputs"
+    const lookups = (activeSection === "dailyInputs" || activeSection === "dailyInputReport")
       ? ["suppliers", "rawMaterials", "products"]
-      : activeSection === "dailyDispatch"
+      : (activeSection === "dailyDispatch" || activeSection === "dailyDispatchReport")
       ? ["dailyInputs", "products", "suppliers", "customers"]
       : activeSection === "products"
       ? ["rawMaterials", "products"]
-      : activeSection === "consumption"
+      : activeSection === "consumption" || activeSection === "dailyConsumptionReport"
       ? ["products", "rawMaterials"]
       : [];
     if (lookups.length === 0) return undefined;
@@ -4280,6 +4821,7 @@ async function submitForm(isAddMore = false) {
       "quantity",
       "out_quantity",
       "ok",
+      "rework",
       "reject",
       "daily_input_id",
       "supplier_id",
@@ -4416,7 +4958,13 @@ async function submitForm(isAddMore = false) {
             "out_dc_date",
             "out_quantity",
             "ok",
+            "rework",
             "reject",
+            "defects",
+            "defect_type",
+            "defect_other",
+            "defect_number",
+            "reject_defect",
             "other_details",
             "user_id",
           ]
@@ -5589,6 +6137,237 @@ async function submitForm(isAddMore = false) {
   }
 }
 
+  function getFieldDisplayValue(fieldName, rawVal) {
+    if (rawVal === null || rawVal === undefined || rawVal === "") return "";
+    if (typeof rawVal === "boolean") return rawVal ? "Yes" : "No";
+    if (typeof rawVal === "string" && /^\d{4}-\d{2}-\d{2}/.test(rawVal)) {
+      return formatDateToDDMMYYYY(rawVal);
+    }
+    if (fieldName === "supplier_id") {
+      const s = lookupOptions.suppliers?.find((it) => String(it.id) === String(rawVal));
+      return s?.company_name || rawVal;
+    }
+    if (fieldName === "product_id" || fieldName === "element_id" || fieldName === "welded_element_id") {
+      const p = lookupOptions.products?.find((it) => String(it.id) === String(rawVal));
+      return p?.name || rawVal;
+    }
+    if (fieldName === "raw_material_id") {
+      const r = lookupOptions.rawMaterials?.find((it) => String(it.id) === String(rawVal));
+      return r?.material_name || rawVal;
+    }
+    if (fieldName === "defects" || fieldName === "rejection_details") {
+      return formatDefectsSummary(rawVal);
+    }
+    return String(rawVal);
+  }
+
+  function triggerFormSaveWithConfirmation() {
+    if (formRef.current && !formRef.current.reportValidity()) {
+      return;
+    }
+
+    const fieldsConfig = editingRecord
+      ? (activeConfig.updateFields || activeConfig.fields || [])
+      : (activeConfig.fields || []);
+
+    const summary = [];
+    fieldsConfig.forEach((f) => {
+      if (f.name === "password") return;
+      const val = formValues[f.name];
+      if (val !== undefined && val !== null && val !== "") {
+        const displayVal = getFieldDisplayValue(f.name, val);
+        if (displayVal !== "" && displayVal !== "—") {
+          summary.push({
+            label: f.label || f.name,
+            value: displayVal,
+          });
+        }
+      }
+    });
+
+    if (formValues.supplier_company_name && !summary.some((s) => s.label.toLowerCase().includes("supplier"))) {
+      summary.unshift({ label: "Supplier", value: formValues.supplier_company_name });
+    }
+
+    const title = `Save ${sections[activeSection]?.singular || "Record"}`;
+    setSaveConfirmModal({
+      title,
+      fields: summary,
+      onConfirm: async () => {
+        setSaveConfirmModal(null);
+        await submitForm(false);
+      },
+    });
+  }
+
+  async function executeSaveDailyDispatch() {
+    setPageError("");
+    setNotice("");
+    setIsSaving(true);
+    try {
+      let savedCount = 0;
+      const newlySavedRecords = [];
+      const finalOutDcNo = commonOutDcNo && String(commonOutDcNo).trim() !== "" ? String(commonOutDcNo).trim() : null;
+      const finalOutDcDate = commonOutDcDate && String(commonOutDcDate).trim() !== "" ? String(commonOutDcDate).trim() : null;
+      for (const row of stagedDailyDispatches) {
+        const outBoxesClean = row.out_boxes && String(row.out_boxes).trim() !== "" ? String(row.out_boxes).trim() : null;
+        const outBinsClean = row.out_bins && String(row.out_bins).trim() !== "" ? String(row.out_bins).trim() : null;
+        const payload = {
+          type: row.type || "Job work",
+          daily_input_id: row.daily_input_id ? Number(row.daily_input_id) : null,
+          product_id: row.product_id ? Number(row.product_id) : null,
+          supplier_id: row.supplier_id ? Number(row.supplier_id) : null,
+          DC_no: row.DC_no || null,
+          DC_date: row.DC_date || null,
+          bill_no: row.bill_no || null,
+          bill_date: row.bill_date || null,
+          item: row.item || null,
+          zach_code: row.zach_code || null,
+          po_batch_no: row.po_batch_no || null,
+          sach_code: row.sach_code || null,
+          ls: row.ls || null,
+          quantity: row.quantity !== "" && row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : null,
+          bin: outBinsClean,
+          boxes: outBoxesClean,
+          unit: row.unit || "num",
+          hsn_code: row.hsn_code || null,
+          total_amount: row.total_amount !== "" && row.total_amount !== null && row.total_amount !== undefined ? Number(row.total_amount) : 0,
+          remarks: row.remarks || null,
+          out_dc_no: finalOutDcNo || (row.out_dc_no && String(row.out_dc_no).trim() !== "" ? String(row.out_dc_no).trim() : null),
+          out_dc_date: finalOutDcDate || (row.out_dc_date && String(row.out_dc_date).trim() !== "" ? String(row.out_dc_date).trim() : null),
+          out_quantity: row.out_quantity !== "" && row.out_quantity !== null && row.out_quantity !== undefined ? Number(row.out_quantity) : null,
+          ok: row.ok !== "" && row.ok !== null && row.ok !== undefined ? Number(row.ok) : null,
+          rework: row.rework !== "" && row.rework !== null && row.rework !== undefined ? Number(row.rework) : null,
+          reject: row.reject !== "" && row.reject !== null && row.reject !== undefined ? Number(row.reject) : null,
+          defects: Array.isArray(row.defects) ? row.defects : null,
+          defect_type: row.defect_type || (Array.isArray(row.defects) && row.defects.length > 0 ? row.defects[0].defect_type : null),
+          defect_other: row.defect_other || (Array.isArray(row.defects) && row.defects.length > 0 ? row.defects[0].defect_other : null),
+          other_details: {
+            out_boxes: outBoxesClean,
+            out_bins: outBinsClean,
+          },
+        };
+        const recordIdToUpdate = row.id || editingRecord?.id;
+        const response = recordIdToUpdate
+          ? await window.desktop.mutateWorkspaceRecord("update", "dailyDispatch", recordIdToUpdate, payload)
+          : await window.desktop.createWorkspaceRecord("dailyDispatch", payload);
+        if (!response?.ok) {
+          setPageError(response?.error || `Failed to ${recordIdToUpdate ? "update" : "save"} Daily Dispatch record.`);
+          setIsSaving(false);
+          return;
+        }
+        if (response.data) {
+          newlySavedRecords.push(response.data);
+        }
+        savedCount += 1;
+      }
+      if (newlySavedRecords.length > 0) {
+        if (editingRecord) {
+          const updatedMap = new Map(newlySavedRecords.map((r) => [String(r.id), r]));
+          setRecords((prev) => prev.map((r) => updatedMap.get(String(r.id)) || r));
+        } else {
+          setRecords((prev) => [...prev, ...newlySavedRecords]);
+        }
+      }
+      const wasEditing = Boolean(editingRecord);
+      setEditingRecord(null);
+      setStagedDailyDispatches([]);
+      setDailyDispatchType("");
+      setDailyDispatchSearchTerm("");
+      setCommonOutDcNo("");
+      setCommonOutDcDate(new Date().toISOString().split("T")[0]);
+      setIsFormOpen(false);
+      setRequestVersion((v) => v + 1);
+      setNotice(wasEditing ? "Daily Dispatch record updated successfully." : `Saved ${savedCount} Daily Dispatch record${savedCount === 1 ? "" : "s"} successfully.`);
+    } catch (err) {
+      setPageError(err?.message || "Failed to save Daily Dispatch record.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function triggerJobWorkSaveWithConfirmation() {
+    if (stagedDailyDispatches.length === 0) {
+      setPageError("Please add at least one daily input to the dispatch table before saving.");
+      return;
+    }
+    const invalidRow = stagedDailyDispatches.find(
+      (r) => r.out_quantity === "" || r.out_quantity === null || r.out_quantity === undefined || Number(r.out_quantity) <= 0
+    );
+    if (invalidRow) {
+      setPageError(`Please enter a valid Out Quantity greater than 0 for P.O. No: ${invalidRow.po_batch_no || invalidRow.item || "item"}.`);
+      return;
+    }
+    const finalOutDcNo = commonOutDcNo && String(commonOutDcNo).trim() !== "" ? String(commonOutDcNo).trim() : null;
+    const finalOutDcDate = commonOutDcDate && String(commonOutDcDate).trim() !== "" ? String(commonOutDcDate).trim() : null;
+
+    setSaveConfirmModal({
+      title: editingRecord ? "Update Daily Dispatch" : "Save Daily Dispatch",
+      fields: [
+        { label: "Out DC No", value: finalOutDcNo || "—" },
+        { label: "Out DC Date", value: formatDateToDDMMYYYY(finalOutDcDate) || "—" },
+      ],
+      multiItems: stagedDailyDispatches,
+      onConfirm: async () => {
+        setSaveConfirmModal(null);
+        await executeSaveDailyDispatch();
+      },
+    });
+  }
+
+  const handleFormKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    if (e.target.tagName.toLowerCase() === "textarea") return;
+    if (e.target.tagName.toLowerCase() === "button") return;
+
+    if (activeSection !== "dailyInputs" && activeSection !== "dailyDispatch") return;
+
+    const formEl = formRef.current || e.currentTarget;
+    if (!formEl) return;
+
+    const selector = 'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])';
+    const allElements = Array.from(formEl.querySelectorAll(selector)).filter((el) => {
+      return el.offsetParent !== null && !el.classList.contains("dispatch-search-input");
+    });
+
+    const currentIndex = allElements.indexOf(e.target);
+    if (currentIndex > -1 && currentIndex < allElements.length - 1) {
+      e.preventDefault();
+      const nextEl = allElements[currentIndex + 1];
+      nextEl.focus();
+      if (typeof nextEl.select === "function" && nextEl.type !== "date") {
+        nextEl.select();
+      }
+    } else if (currentIndex === allElements.length - 1) {
+      e.preventDefault();
+      triggerFormSaveWithConfirmation();
+    }
+  };
+
+  const handleDispatchTableKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    if (e.target.tagName.toLowerCase() === "button") return;
+
+    const container = e.currentTarget;
+    const selector = 'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]):not([readonly])';
+    const allElements = Array.from(container.querySelectorAll(selector)).filter((el) => {
+      return el.offsetParent !== null && !el.classList.contains("dispatch-search-input");
+    });
+
+    const currentIndex = allElements.indexOf(e.target);
+    if (currentIndex > -1 && currentIndex < allElements.length - 1) {
+      e.preventDefault();
+      const nextEl = allElements[currentIndex + 1];
+      nextEl.focus();
+      if (typeof nextEl.select === "function" && nextEl.type !== "date") {
+        nextEl.select();
+      }
+    } else if (currentIndex === allElements.length - 1) {
+      e.preventDefault();
+      triggerJobWorkSaveWithConfirmation();
+    }
+  };
+
   async function handleDelete(record) {
     const label = record.company_name
       || record.material_name
@@ -5691,8 +6470,58 @@ async function handleDeleteSelected() {
   }
 
   function getRecordFieldValue(record, key) {
-    if (key === "DC_no") return record.DC_no ?? record.dc_no;
-    if (key === "DC_date") return record.DC_date ?? record.dc_date;
+    if (key === "rejection_percent") {
+      const outQty = Number(record.out_quantity) || 0;
+      const rej = Number(record.reject) || 0;
+      if (outQty > 0) {
+        const pct = (rej / outQty) * 100;
+        const rounded = Math.round(pct * 100) / 100;
+        return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(2)}%`;
+      }
+      return "0%";
+    }
+    if (key === "rework_percent") {
+      const outQty = Number(record.out_quantity) || 0;
+      const rew = Number(record.rework) || 0;
+      if (outQty > 0) {
+        const pct = (rew / outQty) * 100;
+        const rounded = Math.round(pct * 100) / 100;
+        return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(2)}%`;
+      }
+      return "0%";
+    }
+    if (key === "out_quantity" || key === "reject" || key === "rework" || key === "ok") {
+      const val = record[key];
+      if (val !== undefined && val !== null && val !== "") {
+        const num = Number(val);
+        if (!isNaN(num)) return Math.round(num);
+      }
+      return val;
+    }
+    if (key === "quantity" && (activeSection === "dailyDispatch" || activeSection === "dailyDispatchReport")) {
+      const val = record[key];
+      if (val !== undefined && val !== null && val !== "") {
+        const num = Number(val);
+        if (!isNaN(num)) return Math.round(num);
+      }
+      return val;
+    }
+    if (key === "DC_no" || key === "dc_no") return record.DC_no ?? record.dc_no ?? record.other_details?.DC_no ?? record.other_details?.dc_no;
+    if (key === "DC_date" || key === "dc_date") return record.DC_date ?? record.dc_date ?? record.other_details?.DC_date ?? record.other_details?.dc_date;
+    if (key === "out_dc_no") return record.out_dc_no ?? record.other_details?.out_dc_no;
+    if (key === "out_dc_date") return record.out_dc_date ?? record.other_details?.out_dc_date;
+    if (key === "bill_no") return record.bill_no ?? record.other_details?.bill_no;
+    if (key === "bill_date") return record.bill_date ?? record.other_details?.bill_date;
+    if (key === "supplier" || key === "supplier_id") {
+      return (
+        record.supplier_company_name ??
+        record.supplier?.company_name ??
+        record.other_details?.supplier_company_name ??
+        record.other_details?.company_name ??
+        record.supplier_id ??
+        record.supplier
+      );
+    }
     if (key === "basic_value") {
       if (record.basic_value !== undefined && record.basic_value !== null && record.basic_value !== "") {
         return record.basic_value;
@@ -5764,6 +6593,34 @@ async function handleDeleteSelected() {
           }
         }
       }
+    }
+    if (key === "rejection_details") {
+      if (Array.isArray(record.defects) && record.defects.length > 0) {
+        return formatDefectsSummary(record.defects);
+      }
+      if (record.defect_type) {
+        const typeName = record.defect_type === "other" && record.defect_other ? `Other (${record.defect_other})` : record.defect_type;
+        const parts = [];
+        if (record.rework !== "" && record.rework !== null && record.rework !== undefined) {
+          parts.push(`Rework: ${Math.round(Number(record.rework))}`);
+        }
+        if (record.reject !== "" && record.reject !== null && record.reject !== undefined) {
+          parts.push(`Reject: ${Math.round(Number(record.reject))}`);
+        }
+        const details = parts.join(", ");
+        return details ? `${typeName} (${details})` : typeName;
+      }
+      if ((record.reject !== null && record.reject !== undefined && Number(record.reject) > 0) || (record.rework !== null && record.rework !== undefined && Number(record.rework) > 0)) {
+        const parts = [];
+        if (record.rework !== "" && record.rework !== null && record.rework !== undefined) {
+          parts.push(`Rework: ${Math.round(Number(record.rework))}`);
+        }
+        if (record.reject !== "" && record.reject !== null && record.reject !== undefined) {
+          parts.push(`Reject: ${Math.round(Number(record.reject))}`);
+        }
+        return parts.join(", ");
+      }
+      return "—";
     }
     return record[key];
   }
@@ -6059,11 +6916,27 @@ async function handleDeleteSelected() {
         .replaceAll("'", "&#039;");
     };
 
+    const colCount = preview.columnLabels?.length || 10;
+    const isUltraDense = colCount > 15;
+    const isDense = colCount > 10;
+    const isMedium = colCount > 7;
+
+    const fontSize = isUltraDense ? "7px" : (isDense ? "8px" : (isMedium ? "9px" : "10px"));
+    const headerFontSize = isUltraDense ? "7px" : (isDense ? "8px" : (isMedium ? "9px" : "10px"));
+    const thPadding = isUltraDense ? "2.5px 3px" : (isDense ? "3px 4px" : (isMedium ? "4px 6px" : "6px 8px"));
+    const tdPadding = isUltraDense ? "2px 3px" : (isDense ? "2.5px 4px" : (isMedium ? "3.5px 5px" : "5px 8px"));
+    const pageMargin = isUltraDense ? "5mm 6mm" : (isDense ? "6mm 8mm" : "8mm 10mm");
+    const rejMinWidth = isUltraDense ? "90px" : (isDense ? "110px" : (isMedium ? "140px" : "180px"));
+    const rejMaxWidth = isUltraDense ? "130px" : (isDense ? "150px" : (isMedium ? "190px" : "240px"));
+    const rejLineSize = isUltraDense ? "6.5px" : (isDense ? "7.2px" : (isMedium ? "8px" : "9px"));
+    const rejBadgeSize = isUltraDense ? "6px" : (isDense ? "6.8px" : (isMedium ? "7.5px" : "8.5px"));
+
     const headerCells = preview.columnLabels
       .map((label, idx) => {
         const key = preview.columnKeys?.[idx];
         const isNum = isNumericColumn(key);
-        return `<th class="${isNum ? "num-col" : ""}">${escapeHtml(label)}</th>`;
+        const isRejDetails = key === "rejection_details";
+        return `<th class="${isNum ? "num-col" : ""} ${isRejDetails ? "rejection-details-header" : ""}">${escapeHtml(label)}</th>`;
       })
       .join("");
 
@@ -6073,7 +6946,37 @@ async function handleDeleteSelected() {
           .map((cell, idx) => {
             const key = preview.columnKeys?.[idx];
             const isNum = isNumericColumn(key);
-            return `<td class="${isNum ? "num-col" : ""}">${escapeHtml(cell || "—")}</td>`;
+            const isRejDetails = key === "rejection_details";
+            let cellContent = escapeHtml(cell || "—");
+            if (isRejDetails && typeof cell === "string" && cell.trim() && cell.trim() !== "—" && cell.trim() !== "-") {
+              const lines = cell.split("\n").map((l) => l.trim()).filter(Boolean);
+              cellContent = `<div class="rejection-details-stack">` + lines.map((line) => {
+                const match = line.match(/^(.*?)\s*\((.*?)\)$/);
+                if (!match) {
+                  const rejMatch = line.match(/Reject:\s*(\d+)/i) || line.match(/(\d+)\s*rej/i);
+                  const rewMatch = line.match(/Rework:\s*(\d+)/i) || line.match(/(\d+)\s*rew/i);
+                  if (rejMatch || rewMatch) {
+                    let tags = "";
+                    if (rewMatch) tags += `<span class="rejection-tag rework-tag"><span class="tag-label">Rework:</span> <span class="tag-val">${escapeHtml(rewMatch[1])}</span></span> `;
+                    if (rejMatch) tags += `<span class="rejection-tag reject-tag"><span class="tag-label">Reject:</span> <span class="tag-val">${escapeHtml(rejMatch[1])}</span></span>`;
+                    return `<div class="rejection-detail-line"><span class="rejection-tags-row">${tags}</span></div>`;
+                  }
+                  return `<div class="rejection-detail-line"><span class="rejection-defect-name">${escapeHtml(line)}</span></div>`;
+                }
+                const defectName = match[1].trim();
+                const details = match[2].trim();
+                let rej = null, rew = null;
+                const rejMatch = details.match(/Reject:\s*(\d+)/i) || details.match(/(\d+)\s*rej/i);
+                if (rejMatch) rej = rejMatch[1];
+                const rewMatch = details.match(/Rework:\s*(\d+)/i) || details.match(/(\d+)\s*rew/i);
+                if (rewMatch) rew = rewMatch[1];
+                let tags = "";
+                if (rew !== null) tags += `<span class="rejection-tag rework-tag"><span class="tag-label">Rework:</span> <span class="tag-val">${escapeHtml(rew)}</span></span> `;
+                if (rej !== null) tags += `<span class="rejection-tag reject-tag"><span class="tag-label">Reject:</span> <span class="tag-val">${escapeHtml(rej)}</span></span>`;
+                return `<div class="rejection-detail-line"><span class="rejection-defect-name">${escapeHtml(defectName)}</span> <span class="rejection-tags-row">${tags}</span></div>`;
+              }).join("") + `</div>`;
+            }
+            return `<td class="${isNum ? "num-col" : ""} ${isRejDetails ? "rejection-details-cell" : ""}">${cellContent}</td>`;
           })
           .join("");
         return `<tr>${cells}</tr>`;
@@ -6132,67 +7035,71 @@ async function handleDeleteSelected() {
   <style>
     @page {
       size: A4 landscape;
-      margin: 8mm 10mm;
+      margin: ${pageMargin};
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: #0f172a;
       background: #ffffff;
       margin: 0;
       padding: 0;
-      font-size: 11px;
-      line-height: 1.4;
+      width: 100%;
+      max-width: 100%;
+      font-size: ${fontSize};
+      line-height: 1.3;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .invoice-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       border-bottom: 2px solid #0f172a;
-      padding-bottom: 8px;
-      margin-bottom: 12px;
+      padding-bottom: ${isUltraDense ? "4px" : "6px"};
+      margin-bottom: ${isUltraDense ? "8px" : "12px"};
     }
     .invoice-header h1 {
-      font-size: 18px;
+      font-size: ${isUltraDense ? "14px" : isDense ? "16px" : "18px"};
       font-weight: 700;
       color: #0f172a;
-      margin: 0 0 4px 0;
+      margin: 0 0 2px 0;
       letter-spacing: -0.3px;
     }
     .invoice-header .subtitle {
-      font-size: 11px;
+      font-size: ${isUltraDense ? "9px" : "11px"};
       color: #475569;
       margin: 0;
     }
     .invoice-header .meta {
       text-align: right;
-      font-size: 10px;
+      font-size: ${isUltraDense ? "8px" : "10px"};
       color: #64748b;
-      line-height: 1.5;
+      line-height: 1.4;
     }
     .summary-cards {
       display: flex;
-      gap: 12px;
-      margin-bottom: 14px;
+      gap: ${isUltraDense ? "6px" : "10px"};
+      margin-bottom: ${isUltraDense ? "8px" : "12px"};
       flex-wrap: wrap;
     }
     .summary-card {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 6px 12px;
-      min-width: 120px;
+      border-radius: 4px;
+      padding: ${isUltraDense ? "3px 6px" : "5px 10px"};
+      min-width: ${isUltraDense ? "80px" : "110px"};
     }
     .summary-card.highlight {
       background: #eff6ff;
       border-color: #bfdbfe;
     }
     .summary-card .label {
-      font-size: 9px;
+      font-size: ${isUltraDense ? "7.5px" : "8.5px"};
       font-weight: 600;
       text-transform: uppercase;
       color: #64748b;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
       display: block;
       letter-spacing: 0.5px;
     }
@@ -6200,41 +7107,127 @@ async function handleDeleteSelected() {
       color: #1d4ed8;
     }
     .summary-card .value {
-      font-size: 13px;
+      font-size: ${isUltraDense ? "11px" : "13px"};
       font-weight: 700;
       color: #0f172a;
     }
     .summary-card.highlight .value {
       color: #1e40af;
-      font-size: 14px;
+      font-size: ${isUltraDense ? "12px" : "14px"};
+    }
+    .printable-table-container {
+      width: 100%;
+      max-width: 100%;
+      overflow: visible;
     }
     table.printable-table {
-      width: 100%;
+      width: 100% !important;
+      max-width: 100% !important;
       border-collapse: collapse;
-      font-size: 10px;
+      table-layout: auto;
+      font-size: ${fontSize};
       margin-top: 4px;
       page-break-inside: auto;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     table.printable-table th {
       background: #f1f5f9;
       color: #1e293b;
       font-weight: 700;
       text-align: left;
-      padding: 6px 8px;
+      padding: ${thPadding};
       border: 1px solid #cbd5e1;
+      white-space: normal !important;
+      word-break: normal;
+      overflow-wrap: break-word;
+      hyphens: auto;
+      line-height: 1.15;
+      font-size: ${headerFontSize};
+      vertical-align: bottom;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    table.printable-table th.num-col {
+      text-align: right;
+      white-space: normal !important;
+    }
+    table.printable-table td.num-col {
+      text-align: right;
+      white-space: nowrap;
+    }
+    table.printable-table td {
+      padding: ${tdPadding};
+      border: 1px solid #e2e8f0;
+      color: #334155;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      vertical-align: top;
+      font-size: ${fontSize};
+      line-height: 1.25;
+    }
+    table.printable-table th.rejection-details-header,
+    table.printable-table td.rejection-details-cell {
+      white-space: normal !important;
+      min-width: ${rejMinWidth} !important;
+      max-width: ${rejMaxWidth} !important;
+      width: auto !important;
+      word-break: break-word;
+    }
+    table.printable-table .rejection-details-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    table.printable-table .rejection-detail-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 3px;
+      white-space: normal;
+      margin-bottom: 1px;
+      font-size: ${rejLineSize};
+      line-height: 1.2;
+      padding: 1px 3px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 2px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    table.printable-table .rejection-defect-name {
+      font-weight: 600;
+      color: #0f172a;
+      white-space: normal;
+      word-break: break-word;
+    }
+    table.printable-table .rejection-tags-row {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    table.printable-table .rejection-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: ${rejBadgeSize};
+      padding: 0 2px;
+      border-radius: 2px;
+      font-weight: 600;
       white-space: nowrap;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    table.printable-table th.num-col,
-    table.printable-table td.num-col {
-      text-align: right;
+    table.printable-table .rejection-tag.reject-tag {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
     }
-    table.printable-table td {
-      padding: 5px 8px;
-      border: 1px solid #e2e8f0;
-      color: #334155;
-      word-break: break-word;
+    table.printable-table .rejection-tag.rework-tag {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fcd34d;
     }
     table.printable-table tbody tr:nth-child(even) {
       background: #f8fafc;
@@ -6259,10 +7252,11 @@ async function handleDeleteSelected() {
       print-color-adjust: exact;
     }
     table.printable-table tfoot td {
-      padding: 6px 8px;
+      padding: ${tdPadding};
       border: 1px solid #cbd5e1;
       color: #0f172a;
       font-weight: 700;
+      font-size: ${fontSize};
     }
     table.printable-table tfoot td.highlight {
       background: #eff6ff;
@@ -6306,15 +7300,17 @@ async function handleDeleteSelected() {
     }
   </div>
 
-  <table class="printable-table">
-    <thead>
-      <tr>${headerCells}</tr>
-    </thead>
-    <tbody>
-      ${bodyRows}
-    </tbody>
-    ${totalsHtml}
-  </table>
+  <div class="printable-table-container">
+    <table class="printable-table">
+      <thead>
+        <tr>${headerCells}</tr>
+      </thead>
+      <tbody>
+        ${bodyRows}
+      </tbody>
+      ${totalsHtml}
+    </table>
+  </div>
 </body>
 </html>`;
   }
@@ -6524,7 +7520,18 @@ async function handleDeleteSelected() {
       const sType = record?.supplier_type || (record?.supplier_id ? "supplier" : "general");
       return sType === "general" ? "General" : "Supplier";
     }
-    if (key === "supplier_id") {
+    if (key === "supplier_id" || key === "supplier") {
+      if (record?.supplier_company_name) {
+        return record.supplier_company_name;
+      }
+      if (record?.supplier?.company_name) {
+        return record.supplier.company_name;
+      }
+      const suppId = record?.supplier_id ?? (typeof value === "number" || (/^\d+$/.test(String(value || ""))) ? Number(value) : null);
+      if (suppId) {
+        const matched = lookupOptions.suppliers?.find((supplier) => String(supplier.id) === String(suppId));
+        if (matched?.company_name) return matched.company_name;
+      }
       if (record?.supplier_type === "general" || (!record?.supplier_id && record?.supplier_type === "general")) {
         const comp = record.supplier_company_name || record.other_details?.supplier_company_name || record.other_details?.company_name;
         return comp ? `${comp} (General)` : "General";
@@ -6532,11 +7539,11 @@ async function handleDeleteSelected() {
       if (record?.type === "other") {
         return record.other_details?.supplier_company_name || record.other_details?.company_name || "—";
       }
-      if (value) {
-        return lookupOptions.suppliers?.find((supplier) => supplier.id === value)?.company_name;
+      if (value && typeof value === "string" && isNaN(Number(value))) {
+        return value;
       }
-      if (record?.supplier_company_name) {
-        return `${record.supplier_company_name} (General)`;
+      if (suppId) {
+        return `Supplier #${suppId}`;
       }
       if (record?.supplier_type === "general") {
         return "General";
@@ -6590,7 +7597,7 @@ async function handleDeleteSelected() {
     }
 
     let lookupOptionsForField = [];
-    if (field === "supplier_id") {
+    if (field === "supplier_id" || field === "supplier") {
       lookupOptionsForField = (lookupOptions.suppliers || []).map((item) => ({
         value: String(item.id),
         label: item.company_name || `Supplier #${item.id}`,
@@ -6670,20 +7677,38 @@ async function handleDeleteSelected() {
     records,
   ]);
 
-  const activeLookups = activeSection === "dailyInputs"
+  const activeLookups = (activeSection === "dailyInputs" || activeSection === "dailyInputReport")
     ? ["suppliers", "rawMaterials", "products"]
-    : activeSection === "dailyDispatch"
+    : (activeSection === "dailyDispatch" || activeSection === "dailyDispatchReport")
     ? ["dailyInputs", "products", "suppliers", "customers"]
     : activeSection === "products"
     ? ["rawMaterials", "products"]
     : [];
   const isLookupLoading = activeLookups.some((lookup) => lookupLoading[lookup]);
+  const isApiLoading = Boolean(
+    isLoading ||
+    isSaving ||
+    isLookupLoading ||
+    isSavingQuickRm ||
+    isSavingQuickPrd ||
+    isSavingQuickSup ||
+    (lookupLoading && Object.values(lookupLoading).some(Boolean))
+  );
   const activeLookupError = activeLookups
     .map((lookup) => lookupErrors[lookup])
     .find(Boolean);
 
   return (
     <main className="workspace-shell">
+      {isApiLoading && (
+        <>
+          <div className="global-api-loading-bar" role="progressbar" aria-label="Loading..." />
+          <div className="global-api-loader-pill" role="status" aria-live="polite">
+            <span className="global-api-spinner" />
+            <span>{isSaving ? "Saving changes…" : "Loading records…"}</span>
+          </div>
+        </>
+      )}
       <aside aria-label="Main navigation" className={`sidebar ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="sidebar-brand">
           <div className="brand-mark sidebar-mark" aria-hidden="true" title="Oyster Electronics">OE</div>
@@ -6864,7 +7889,7 @@ async function handleDeleteSelected() {
                       onClick={() => {
                         setPageError("");
                         setNotice("");
-                        if (isFormOpen && !editingRecord) {
+                        if (isFormOpen) {
                           setIsFormOpen(false);
                           setEditingRecord(null);
                           setFormValues({});
@@ -6910,6 +7935,11 @@ async function handleDeleteSelected() {
                           if (activeSection === "dailyDispatch") {
                             setDailyDispatchType("");
                             initialValues.type = "";
+                            const nextDc = generateNextOutDcNo(records, new Date());
+                            initialValues.out_dc_no = nextDc;
+                            initialValues.out_dc_date = new Date().toISOString().split("T")[0];
+                            setCommonOutDcNo(nextDc);
+                            setCommonOutDcDate(new Date().toISOString().split("T")[0]);
                             setStagedDailyDispatches([]);
                           }
                           setFormValues(initialValues);
@@ -6918,14 +7948,50 @@ async function handleDeleteSelected() {
                       }}
                       type="button"
                     >
-                      {isFormOpen && !editingRecord ? "Cancel" : `+ Add ${activeConfig.singular}`}
+                      {isFormOpen ? "Cancel" : `+ Add ${activeConfig.singular}`}
                     </button>
                   )}
                 </div>
               </div>
 
-              {pageError && <p className="workspace-error" role="alert">{pageError}</p>}
-              {notice && <p className="workspace-notice" role="status">{notice}</p>}
+              {/* Floating Toast Notification Pop-up on the Right Side (Auto-dismisses in 15s) */}
+              <div className="toast-notifications-container" aria-live="polite">
+                {pageError && (
+                  <div className="toast-notification toast-warning" role="alert">
+                    <div className="toast-content">
+                      <span className="toast-icon">⚠️</span>
+                      <span className="toast-message">{pageError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="toast-close-btn"
+                      onClick={() => setPageError("")}
+                      title="Dismiss warning"
+                    >
+                      ✕
+                    </button>
+                    <div className="toast-progress-bar warning-progress" />
+                  </div>
+                )}
+
+                {notice && (
+                  <div className="toast-notification toast-notice" role="status">
+                    <div className="toast-content">
+                      <span className="toast-icon">ℹ️</span>
+                      <span className="toast-message">{notice}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="toast-close-btn"
+                      onClick={() => setNotice("")}
+                      title="Dismiss notice"
+                    >
+                      ✕
+                    </button>
+                    <div className="toast-progress-bar notice-progress" />
+                  </div>
+                )}
+              </div>
 
               {activeSection === "dailyDispatch" && isFormOpen && (
                 <div className="rm-type-selector-card" style={{ marginBottom: "16px" }}>
@@ -6985,6 +8051,10 @@ async function handleDeleteSelected() {
                       const strPo = String(poVal).trim();
                       if (!strPo || strPo === "-" || strPo === "—") return false;
                       if (dispatchedLegacyPos.has(strPo.toLowerCase())) return false;
+                      const q = String(dailyDispatchSearchTerm || "").trim().toLowerCase();
+                      if (q) {
+                        return strPo.toLowerCase().includes(q);
+                      }
                       return true;
                     });
                     const isNonEmptyDisplayVal = (val) => {
@@ -7044,18 +8114,57 @@ async function handleDeleteSelected() {
                         tdClassName: "numeric-cell",
                         thStyle: { width: "9%", textAlign: "right", padding: "8px 10px", whiteSpace: "nowrap" },
                         tdStyle: { width: "9%", textAlign: "right", padding: "7px 10px" },
-                        getValue: (di) => di.quantity,
+                        getValue: (di) => (di.quantity !== null && di.quantity !== undefined && di.quantity !== "" ? Math.round(Number(di.quantity)) : ""),
                       },
                     ];
                     const visibleJobWorkCols = jobWorkColumns;
+                    const hasUnaddedStagedRow = stagedDailyDispatches.some((row) => !row.isAdded);
+                    const showDailyInputPicker = !editingRecord && !hasUnaddedStagedRow;
                     return (
-                      <div className="staged-raw-materials-section" style={{ marginTop: "14px" }}>
-                        <div className="staged-raw-materials-header">
-                          <h3>Daily Inputs with P.O. Number ({poDailyInputs.length})</h3>
-                          <span className="staged-hint">
-                            Showing all Daily Inputs that have a P.O.No / Batch No. Click a row or "Select" to load (click again or "Deselect" to clear).
-                          </span>
+                      <>
+                        {showDailyInputPicker && (
+                          <div className="staged-raw-materials-section" style={{ marginTop: "14px" }}>
+                            <div className="staged-raw-materials-header">
+                              <h3>Daily Inputs with P.O. Number ({poDailyInputs.length})</h3>
+                              <span className="staged-hint">
+                                Showing all Daily Inputs that have a P.O.No / Batch No. Click a row or "Select" to load.
+                              </span>
+                            </div>
+
+                        {/* Search Daily Inputs strictly by P.O. Number (Enhanced Formatting) */}
+                        <div className="dispatch-search-toolbar">
+                          <div className="dispatch-search-box">
+                            <span className="dispatch-search-icon">🔍</span>
+                            <input
+                              type="text"
+                              className="dispatch-search-input"
+                              placeholder="Search by P.O. Number (e.g. PO-1024)..."
+                              value={dailyDispatchSearchTerm}
+                              onChange={(e) => setDailyDispatchSearchTerm(e.target.value)}
+                            />
+                            {dailyDispatchSearchTerm && (
+                              <button
+                                type="button"
+                                className="dispatch-search-clear"
+                                title="Clear P.O. search"
+                                onClick={() => setDailyDispatchSearchTerm("")}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          <div className="dispatch-search-meta">
+                            <span className="dispatch-search-count-pill">
+                              {poDailyInputs.length} {poDailyInputs.length === 1 ? "input found" : "inputs found"}
+                            </span>
+                            {dailyDispatchSearchTerm && (
+                              <span className="dispatch-search-active-tag">
+                                Filter: P.O. "<strong>{dailyDispatchSearchTerm}</strong>"
+                              </span>
+                            )}
+                          </div>
                         </div>
+
                         <div className="staged-table-wrapper">
                           <table className="staged-table">
                             <thead>
@@ -7121,13 +8230,13 @@ async function handleDeleteSelected() {
                                       hsn_code: cleanVal(hsnVal),
                                       total_amount: di.total_amount ?? 0,
                                       remarks: cleanVal(di.remarks),
-                                      out_dc_no: "",
-                                      out_dc_date: "",
                                       out_quantity: "",
                                       out_boxes: "",
                                       out_bins: "",
                                       ok: "",
+                                      rework: "",
                                       reject: "",
+                                      defects: [],
                                       isAdded: false,
                                     };
                                     setStagedDailyDispatches((prev) => [...prev, newRow]);
@@ -7176,320 +8285,409 @@ async function handleDeleteSelected() {
                             </tbody>
                           </table>
                         </div>
-
-                        {stagedDailyDispatches.length > 0 && (
-                          <div className="dispatch-selected-section">
-                            <div className="dispatch-selected-header">
-                              <div className="dispatch-selected-title-wrap">
-                                <h3>Selected Daily Input for Dispatch ({stagedDailyDispatches.length})</h3>
-                                <span className="dispatch-selected-hint">
-                                  Enter Out DC No, Out DC Date, Out Quantity, Out Boxes, Out Bins, OK, and Reject, click + Add to confirm each row, then click Save Dispatch.
-                                </span>
-                              </div>
-                              <div className="dispatch-selected-actions">
-                                <button
-                                  type="button"
-                                  className="dispatch-clear-btn"
-                                  onClick={() => {
-                                    setStagedDailyDispatches([]);
-                                    setNotice("Cleared selected daily inputs.");
-                                  }}
-                                >
-                                  Clear All
-                                </button>
-                                <button
-                                  type="button"
-                                  className="dispatch-save-btn"
-                                  disabled={isSaving}
-                                  onClick={async () => {
-                                    setPageError("");
-                                    setNotice("");
-                                    setIsSaving(true);
-                                    try {
-                                      let savedCount = 0;
-                                      const newlySavedRecords = [];
-                                      for (const row of stagedDailyDispatches) {
-                                        const outBoxesClean = row.out_boxes && String(row.out_boxes).trim() !== "" ? String(row.out_boxes).trim() : null;
-                                        const outBinsClean = row.out_bins && String(row.out_bins).trim() !== "" ? String(row.out_bins).trim() : null;
-                                        const payload = {
-                                          type: row.type || "Job work",
-                                          daily_input_id: row.daily_input_id ? Number(row.daily_input_id) : null,
-                                          product_id: row.product_id ? Number(row.product_id) : null,
-                                          supplier_id: row.supplier_id ? Number(row.supplier_id) : null,
-                                          DC_no: row.DC_no || null,
-                                          DC_date: row.DC_date || null,
-                                          bill_no: row.bill_no || null,
-                                          bill_date: row.bill_date || null,
-                                          item: row.item || null,
-                                          zach_code: row.zach_code || null,
-                                          po_batch_no: row.po_batch_no || null,
-                                          sach_code: row.sach_code || null,
-                                          ls: row.ls || null,
-                                          quantity: row.quantity !== "" && row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : null,
-                                          bin: outBinsClean,
-                                          boxes: outBoxesClean,
-                                          unit: row.unit || "num",
-                                          hsn_code: row.hsn_code || null,
-                                          total_amount: row.total_amount !== "" && row.total_amount !== null && row.total_amount !== undefined ? Number(row.total_amount) : 0,
-                                          remarks: row.remarks || null,
-                                          out_dc_no: row.out_dc_no && String(row.out_dc_no).trim() !== "" ? String(row.out_dc_no).trim() : null,
-                                          out_dc_date: row.out_dc_date && String(row.out_dc_date).trim() !== "" ? String(row.out_dc_date).trim() : null,
-                                          out_quantity: row.out_quantity !== "" && row.out_quantity !== null && row.out_quantity !== undefined ? Number(row.out_quantity) : null,
-                                          ok: row.ok !== "" && row.ok !== null && row.ok !== undefined ? Number(row.ok) : null,
-                                          reject: row.reject !== "" && row.reject !== null && row.reject !== undefined ? Number(row.reject) : null,
-                                          other_details: {
-                                            out_boxes: outBoxesClean,
-                                            out_bins: outBinsClean,
-                                          },
-                                        };
-                                        const response = await window.desktop.createWorkspaceRecord("dailyDispatch", payload);
-                                        if (!response?.ok) {
-                                          setPageError(response?.error || "Failed to save Daily Dispatch record.");
-                                          setIsSaving(false);
-                                          return;
-                                        }
-                                        if (response.data) {
-                                          newlySavedRecords.push(response.data);
-                                        }
-                                        savedCount += 1;
-                                      }
-                                      if (newlySavedRecords.length > 0) {
-                                        setRecords((prev) => [...prev, ...newlySavedRecords]);
-                                      }
-                                      setStagedDailyDispatches([]);
-                                      setDailyDispatchType("");
-                                      setIsFormOpen(false);
-                                      setRequestVersion((v) => v + 1);
-                                      setNotice(`Saved ${savedCount} Daily Dispatch record${savedCount === 1 ? "" : "s"} successfully.`);
-                                    } catch (err) {
-                                      setPageError(err?.message || "Failed to save Daily Dispatch record.");
-                                    } finally {
-                                      setIsSaving(false);
-                                    }
-                                  }}
-                                >
-                                  {isSaving ? "Saving…" : `Save Dispatch (${stagedDailyDispatches.length})`}
-                                </button>
-                              </div>
-                            </div>
-                            <div className="dispatch-selected-table-wrapper">
-                              <table className="dispatch-selected-table">
-                                <colgroup>
-                                  <col style={{ width: "115px" }} />
-                                  <col style={{ width: "95px" }} />
-                                  <col style={{ width: "100px" }} />
-                                  <col style={{ width: "150px" }} />
-                                  <col style={{ width: "90px" }} />
-                                  <col style={{ width: "55px" }} />
-                                  <col style={{ width: "80px" }} />
-                                  <col style={{ width: "110px" }} />
-                                  <col style={{ width: "130px" }} />
-                                  <col style={{ width: "95px" }} />
-                                  <col style={{ width: "90px" }} />
-                                  <col style={{ width: "90px" }} />
-                                  <col style={{ width: "75px" }} />
-                                  <col style={{ width: "75px" }} />
-                                  <col style={{ width: "95px" }} />
-                                </colgroup>
-                                <thead>
-                                  <tr>
-                                    <th style={{ whiteSpace: "nowrap" }} title="P.O. Number">P.O. Number</th>
-                                    <th style={{ whiteSpace: "nowrap" }} title="DC No">DC No</th>
-                                    <th style={{ whiteSpace: "nowrap" }} title="DC Date">DC Date</th>
-                                    <th style={{ whiteSpace: "nowrap" }} title="Item">Item</th>
-                                    <th style={{ whiteSpace: "nowrap" }} title="Sach">Sach</th>
-                                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }} title="Ls">Ls</th>
-                                    <th style={{ textAlign: "right", whiteSpace: "nowrap" }} title="Quantity">Quantity</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out DC No">Out DC No</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out DC Date">Out DC Date</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out Quantity">Out Quantity</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out Boxes">Out Boxes</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Out Bins">Out Bins</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="OK">OK</th>
-                                    <th className="dispatch-input-col-header" style={{ whiteSpace: "nowrap" }} title="Reject">Reject</th>
-                                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }} title="Action">Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {stagedDailyDispatches.map((row, idx) => {
-                                    const updateStagedField = (fieldKey, val) => {
-                                      setStagedDailyDispatches((prev) =>
-                                        prev.map((item, i) => (i === idx ? { ...item, [fieldKey]: val } : item))
-                                      );
-                                    };
-                                    return (
-                                      <tr
-                                        key={`${row.daily_input_id}-${idx}`}
-                                        style={row.isAdded ? { background: "#f0fdf4" } : undefined}
-                                      >
-                                        <td title={row.po_batch_no}>
-                                          <strong>{row.po_batch_no}</strong>
-                                        </td>
-                                        <td title={row.DC_no}>{row.DC_no}</td>
-                                        <td title={row.DC_date}>{formatDateToDDMMYYYY(row.DC_date)}</td>
-                                        <td className="staged-item-name" title={row.item}>
-                                          {row.item}
-                                        </td>
-                                        <td title={row.sach_code}>{row.sach_code}</td>
-                                        <td style={{ textAlign: "center" }}>{row.ls}</td>
-                                        <td style={{ textAlign: "right", fontWeight: 600 }}>
-                                          {row.quantity}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span title={row.out_dc_no}>{row.out_dc_no}</span>
-                                          ) : (
-                                            <input
-                                              type="text"
-                                              className="dispatch-inline-input"
-                                              placeholder="Out DC No"
-                                              value={row.out_dc_no ?? ""}
-                                              onChange={(e) => updateStagedField("out_dc_no", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span title={row.out_dc_date}>{formatDateToDDMMYYYY(row.out_dc_date)}</span>
-                                          ) : (
-                                            <input
-                                              type="date"
-                                              className="dispatch-inline-input"
-                                              value={row.out_dc_date ?? ""}
-                                              onChange={(e) => updateStagedField("out_dc_date", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span style={{ display: "block", textAlign: "right", fontWeight: 600 }}>
-                                              {row.out_quantity}
-                                            </span>
-                                          ) : (
-                                            <input
-                                              type="number"
-                                              step="any"
-                                              min="0"
-                                              className="dispatch-inline-input numeric"
-                                              placeholder="0"
-                                              value={row.out_quantity ?? ""}
-                                              onChange={(e) => updateStagedField("out_quantity", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span style={{ display: "block", textAlign: "center" }}>
-                                              {row.out_boxes}
-                                            </span>
-                                          ) : (
-                                            <input
-                                              type="text"
-                                              className="dispatch-inline-input"
-                                              placeholder="Out Boxes"
-                                              value={row.out_boxes ?? ""}
-                                              onChange={(e) => updateStagedField("out_boxes", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span style={{ display: "block", textAlign: "center" }}>
-                                              {row.out_bins}
-                                            </span>
-                                          ) : (
-                                            <input
-                                              type="text"
-                                              className="dispatch-inline-input"
-                                              placeholder="Out Bins"
-                                              value={row.out_bins ?? ""}
-                                              onChange={(e) => updateStagedField("out_bins", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span style={{ display: "block", textAlign: "right" }}>
-                                              {row.ok}
-                                            </span>
-                                          ) : (
-                                            <input
-                                              type="number"
-                                              step="any"
-                                              min="0"
-                                              className="dispatch-inline-input numeric"
-                                              placeholder="0"
-                                              value={row.ok ?? ""}
-                                              onChange={(e) => updateStagedField("ok", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td>
-                                          {row.isAdded ? (
-                                            <span style={{ display: "block", textAlign: "right" }}>
-                                              {row.reject}
-                                            </span>
-                                          ) : (
-                                            <input
-                                              type="number"
-                                              step="any"
-                                              min="0"
-                                              className="dispatch-inline-input numeric"
-                                              placeholder="0"
-                                              value={row.reject ?? ""}
-                                              onChange={(e) => updateStagedField("reject", e.target.value)}
-                                            />
-                                          )}
-                                        </td>
-                                        <td className="staged-actions-cell">
-                                          {row.isAdded ? (
-                                            <div className="staged-actions-wrap">
-                                              <button
-                                                type="button"
-                                                className="table-action edit-staged-btn"
-                                                title="Edit this dispatch row"
-                                                onClick={() => {
-                                                  updateStagedField("isAdded", false);
-                                                  setNotice(`Editing dispatch row for P.O.No: ${row.po_batch_no || row.item}.`);
-                                                }}
-                                              >
-                                                Edit
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="table-action delete-action delete-staged-btn"
-                                                title="Delete this dispatch row"
-                                                onClick={() => {
-                                                  setStagedDailyDispatches((prev) => prev.filter((_, i) => i !== idx));
-                                                  setNotice(`Deleted dispatch row for P.O.No: ${row.po_batch_no || row.item}.`);
-                                                }}
-                                              >
-                                                Delete
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            <button
-                                              type="button"
-                                              className="table-btn-add-more"
-                                              title="Add this dispatch row"
-                                              onClick={() => {
-                                                updateStagedField("isAdded", true);
-                                                setNotice(`Added dispatch row for P.O.No: ${row.po_batch_no || row.item}.`);
-                                              }}
-                                            >
-                                              + Add
-                                            </button>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
                       </div>
+                    )}
+
+                    {stagedDailyDispatches.length > 0 && (
+                      <div className="dispatch-selected-section" onKeyDown={handleDispatchTableKeyDown}>
+                        <div className="dispatch-selected-header">
+                          <div className="dispatch-selected-title-wrap">
+                            <h3>{editingRecord ? "Edit Daily Dispatch" : `Selected Daily Input for Dispatch (${stagedDailyDispatches.length})`}</h3>
+                            <span className="dispatch-selected-hint">
+                              {editingRecord
+                                ? "Update Out Quantity, Out Boxes, Out Bins, OK, Rejection Details, Rework, Total Reject, or Remarks."
+                                : 'Enter Out Quantity, Out Boxes, Out Bins, OK, Rejection Details, Rework, and Total Reject. Click "+ Add" to confirm.'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Common Out DC No and Date Bar */}
+                        <div className="dispatch-common-bar">
+                          <div className="dispatch-common-field">
+                            <label htmlFor="common-out-dc-no">
+                              Out DC No:
+                            </label>
+                            <input
+                              id="common-out-dc-no"
+                              type="text"
+                              className="dispatch-common-input"
+                              placeholder="Enter common Out DC No"
+                              value={commonOutDcNo}
+                              onChange={(e) => setCommonOutDcNo(e.target.value)}
+                            />
+                          </div>
+                          <div className="dispatch-common-field">
+                            <label htmlFor="common-out-dc-date">
+                              Out DC Date:
+                            </label>
+                            <input
+                              id="common-out-dc-date"
+                              type="date"
+                              className="dispatch-common-input"
+                              value={commonOutDcDate}
+                              onChange={(e) => setCommonOutDcDate(e.target.value)}
+                            />
+                          </div>
+                          <span className="dispatch-common-hint">
+                            {editingRecord
+                              ? "Out DC No and Date for this dispatch record."
+                              : "Common Out DC No and Date will apply to all selected records below."}
+                          </span>
+                        </div>
+
+                        <div className="dispatch-selected-items-container">
+                          {stagedDailyDispatches.map((row, idx) => {
+                            const updateStagedField = (fieldKey, val) => {
+                              setStagedDailyDispatches((prev) =>
+                                prev.map((item, i) => (i === idx ? { ...item, [fieldKey]: val } : item))
+                              );
+                            };
+                            return (
+                              <div key={`${row.id || row.daily_input_id}-${idx}`} className="dispatch-item-card">
+                                {/* Row 1: Fixed Variables (DC No, DC Date, Ls removed) */}
+                                <div className="dispatch-fixed-row">
+                                  <div className="dispatch-fixed-left">
+                                    <span className="dispatch-row-badge">#{idx + 1}</span>
+                                    <div className="dispatch-fixed-pill" title="P.O. Number">
+                                      <span className="fixed-pill-label">P.O. No:</span>
+                                      <strong className="fixed-pill-val">{row.po_batch_no || "—"}</strong>
+                                    </div>
+                                    <div className="dispatch-fixed-pill item-pill" title={row.item}>
+                                      <span className="fixed-pill-label">Item:</span>
+                                      <strong className="fixed-pill-val item-title">{row.item || "—"}</strong>
+                                    </div>
+                                    <div className="dispatch-fixed-pill" title="Sach Code">
+                                      <span className="fixed-pill-label">Sach:</span>
+                                      <span className="fixed-pill-val">{row.sach_code || "—"}</span>
+                                    </div>
+                                    <div className="dispatch-fixed-pill qty-pill" title="Received / Input Quantity">
+                                      <span className="fixed-pill-label">Recv Qty:</span>
+                                      <strong className="fixed-pill-val qty-val">{row.quantity ?? "0"}</strong>
+                                    </div>
+                                  </div>
+                                  <div className="dispatch-fixed-right">
+                                    <button
+                                      type="button"
+                                      className="dispatch-remove-btn"
+                                      title={editingRecord ? "Cancel editing this dispatch" : (row.isAdded ? "Remove this item from dispatch" : "Cancel this selection")}
+                                      onClick={() => {
+                                        if (editingRecord) {
+                                          setEditingRecord(null);
+                                          setStagedDailyDispatches([]);
+                                          setIsFormOpen(false);
+                                          setNotice("Canceled editing daily dispatch.");
+                                        } else {
+                                          setStagedDailyDispatches((prev) => prev.filter((_, i) => i !== idx));
+                                          setNotice(`Removed item for P.O. No: ${row.po_batch_no || row.item}.`);
+                                        }
+                                      }}
+                                    >
+                                      {editingRecord ? "✕ Cancel" : (row.isAdded ? "✕ Remove" : "✕ Cancel")}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Row 2: Variable Fields Below It */}
+                                {row.isAdded ? (
+                                  <div className="dispatch-vars-row dispatch-vars-added-row">
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Out Qty:</span>
+                                      <strong className="dispatch-display-val qty-val">{Math.round(Number(row.out_quantity))}</strong>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Out Boxes:</span>
+                                      <span className="dispatch-display-val">{row.out_boxes || "—"}</span>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Out Bins:</span>
+                                      <span className="dispatch-display-val">{row.out_bins || "—"}</span>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">OK:</span>
+                                      <span className="dispatch-display-val">{row.ok !== "" && row.ok !== null && row.ok !== undefined ? Math.round(Number(row.ok)) : "0"}</span>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Rejection Details:</span>
+                                      <span className="dispatch-display-val">
+                                        {Array.isArray(row.defects) && row.defects.length > 0 ? (
+                                          <button
+                                            type="button"
+                                            className="dispatch-defects-summary-pill-btn"
+                                            onClick={() => setActiveDefectModalRowIndex(idx)}
+                                            title="View defects"
+                                          >
+                                            ⚠️ {row.defects.length} Defect{row.defects.length > 1 ? "s" : ""}
+                                          </button>
+                                        ) : (
+                                          "None"
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Rework:</span>
+                                      <span className="dispatch-display-val">{row.rework !== "" && row.rework !== null && row.rework !== undefined ? Math.round(Number(row.rework)) : "0"}</span>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Rework %:</span>
+                                      <strong className="dispatch-display-val">
+                                        {Number(row.out_quantity) > 0 ? `${(((Number(row.rework) || 0) / Number(row.out_quantity)) * 100).toFixed(1)}%` : "0%"}
+                                      </strong>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Total Reject:</span>
+                                      <strong className="dispatch-display-val" style={{ color: Number(row.reject) > 0 ? "#b91c1c" : undefined }}>
+                                        {row.reject !== "" && row.reject !== null && row.reject !== undefined ? Math.round(Number(row.reject)) : "0"}
+                                      </strong>
+                                    </div>
+                                    <div className="dispatch-var-display-cell">
+                                      <span className="dispatch-var-label">Rejection %:</span>
+                                      <strong className="dispatch-display-val" style={{ color: Number(row.reject) > 0 ? "#b91c1c" : undefined }}>
+                                        {Number(row.out_quantity) > 0 ? `${(((Number(row.reject) || 0) / Number(row.out_quantity)) * 100).toFixed(1)}%` : "0%"}
+                                      </strong>
+                                    </div>
+                                    {row.remarks && (
+                                      <div className="dispatch-var-display-cell">
+                                        <span className="dispatch-var-label">Remarks:</span>
+                                        <span className="dispatch-display-val">{row.remarks}</span>
+                                      </div>
+                                    )}
+                                    <div className="dispatch-vars-actions">
+                                      <button
+                                        type="button"
+                                        className="table-action edit-staged-btn"
+                                        title="Edit this dispatch item"
+                                        onClick={() => {
+                                          updateStagedField("isAdded", false);
+                                          setNotice(`Editing dispatch item for P.O. No: ${row.po_batch_no || row.item}.`);
+                                        }}
+                                      >
+                                        ✏️ Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="table-action delete-action delete-staged-btn"
+                                        title={editingRecord ? "Cancel editing this dispatch" : "Remove this dispatch item"}
+                                        onClick={() => {
+                                          if (editingRecord) {
+                                            setEditingRecord(null);
+                                            setStagedDailyDispatches([]);
+                                            setIsFormOpen(false);
+                                            setNotice("Canceled editing daily dispatch.");
+                                          } else {
+                                            setStagedDailyDispatches((prev) => prev.filter((_, i) => i !== idx));
+                                            setNotice(`Removed item for P.O. No: ${row.po_batch_no || row.item}.`);
+                                          }
+                                        }}
+                                      >
+                                        {editingRecord ? "✕ Cancel" : "🗑️ Delete"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="dispatch-vars-row">
+                                    <div className="dispatch-var-field">
+                                      <label className="dispatch-var-label">
+                                        Out Quantity <span className="req-dot">*</span>
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        className="dispatch-inline-input numeric"
+                                        placeholder="0"
+                                        value={row.out_quantity ?? ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value.replace(/[^\d]/g, "");
+                                          updateStagedField("out_quantity", v);
+                                        }}
+                                        autoFocus
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field">
+                                      <label className="dispatch-var-label">Out Boxes</label>
+                                      <input
+                                        type="text"
+                                        className="dispatch-inline-input"
+                                        placeholder="Boxes"
+                                        value={row.out_boxes ?? ""}
+                                        onChange={(e) => updateStagedField("out_boxes", e.target.value)}
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field">
+                                      <label className="dispatch-var-label">Out Bins</label>
+                                      <input
+                                        type="text"
+                                        className="dispatch-inline-input"
+                                        placeholder="Bins"
+                                        value={row.out_bins ?? ""}
+                                        onChange={(e) => updateStagedField("out_bins", e.target.value)}
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field">
+                                      <label className="dispatch-var-label">OK</label>
+                                      <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        className="dispatch-inline-input numeric"
+                                        placeholder="0"
+                                        value={row.ok ?? ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value.replace(/[^\d]/g, "");
+                                          updateStagedField("ok", v);
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field rejection-btn-field">
+                                      <label className="dispatch-var-label">Rejection Details</label>
+                                      <button
+                                        type="button"
+                                        className={`dispatch-defects-btn ${Array.isArray(row.defects) && row.defects.length > 0 ? "has-defects" : ""}`}
+                                        title={Array.isArray(row.defects) && row.defects.length > 0 ? formatDefectsSummary(row.defects) : "Open Rejection Details & Defects"}
+                                        onClick={() => setActiveDefectModalRowIndex(idx)}
+                                      >
+                                        {Array.isArray(row.defects) && row.defects.length > 0 ? (
+                                          <span className="dispatch-defects-summary-pill">
+                                            {row.defects.length} defect{row.defects.length > 1 ? "s" : ""}
+                                          </span>
+                                        ) : (
+                                          "+ Defects"
+                                        )}
+                                      </button>
+                                    </div>
+
+                                    <div className="dispatch-var-field">
+                                      <label className="dispatch-var-label">Rework</label>
+                                      <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        className="dispatch-inline-input numeric"
+                                        placeholder="0"
+                                        title="Rework"
+                                        value={row.rework ?? ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value.replace(/[^\d]/g, "");
+                                          updateStagedField("rework", v);
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field">
+                                      <label className="dispatch-var-label">Total Reject</label>
+                                      <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        className="dispatch-inline-input numeric"
+                                        style={Number(row.reject) > 0 ? { borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 } : undefined}
+                                        placeholder="0"
+                                        title="Total Reject"
+                                        value={row.reject ?? ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value.replace(/[^\d]/g, "");
+                                          updateStagedField("reject", v);
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field remarks-field">
+                                      <label className="dispatch-var-label">Remarks</label>
+                                      <input
+                                        type="text"
+                                        className="dispatch-inline-input"
+                                        placeholder="Remarks"
+                                        title="Remarks"
+                                        value={row.remarks ?? ""}
+                                        onChange={(e) => updateStagedField("remarks", e.target.value)}
+                                      />
+                                    </div>
+
+                                    <div className="dispatch-var-field dispatch-action-field">
+                                      <label className="dispatch-var-label">&nbsp;</label>
+                                      <button
+                                        type="button"
+                                        className="dispatch-row-add-btn"
+                                        title={editingRecord ? "Done editing" : "Add this daily input to dispatch"}
+                                        onClick={() => {
+                                          if (row.out_quantity === "" || row.out_quantity === null || Number(row.out_quantity) <= 0) {
+                                            setPageError("Please enter a valid Out Quantity greater than 0 before clicking " + (editingRecord ? "Done." : "+ Add."));
+                                            return;
+                                          }
+                                          setPageError("");
+                                          updateStagedField("isAdded", true);
+                                          setNotice(editingRecord ? "Updated dispatch row. Click Update Dispatch below to save." : `Added P.O.No: ${row.po_batch_no || row.item} to dispatch list. You can now select another daily input or click Save Dispatch.`);
+                                        }}
+                                      >
+                                        {editingRecord ? "✓ Done" : "+ Add"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <RejectionDetailsModal
+                          isOpen={activeDefectModalRowIndex !== null}
+                          targetRow={activeDefectModalRowIndex !== null ? stagedDailyDispatches[activeDefectModalRowIndex] : null}
+                          onClose={() => setActiveDefectModalRowIndex(null)}
+                          onSave={(cleanDefects, totalRework, totalReject) => {
+                            if (activeDefectModalRowIndex !== null) {
+                              setStagedDailyDispatches((prev) =>
+                                prev.map((item, i) =>
+                                  i === activeDefectModalRowIndex
+                                    ? {
+                                        ...item,
+                                        defects: cleanDefects,
+                                        reject: totalReject,
+                                        rework: totalRework > 0 ? totalRework : item.rework,
+                                        defect_type: cleanDefects.length > 0 ? cleanDefects[0].defect_type : item.defect_type,
+                                        defect_other: cleanDefects.length > 0 ? cleanDefects[0].defect_other : item.defect_other,
+                                      }
+                                    : item
+                                )
+                              );
+                              setActiveDefectModalRowIndex(null);
+                            }
+                          }}
+                        />
+
+                        {/* Save Dispatch and Clear All in bottom right corner */}
+                        <div className="dispatch-selected-footer">
+                          <button
+                            type="button"
+                            className="dispatch-clear-btn"
+                            onClick={() => {
+                              setStagedDailyDispatches([]);
+                              if (editingRecord) {
+                                setEditingRecord(null);
+                                setIsFormOpen(false);
+                                setNotice("Canceled editing daily dispatch.");
+                              } else {
+                                setNotice("Cleared selected daily inputs.");
+                              }
+                            }}
+                          >
+                            {editingRecord ? "Cancel" : "Clear All"}
+                          </button>
+                          <button
+                            type="button"
+                            className="dispatch-save-btn"
+                            disabled={isSaving}
+                            onClick={() => triggerJobWorkSaveWithConfirmation()}
+                          >
+                            {isSaving ? "Saving…" : (editingRecord ? "Update Dispatch" : `Save Dispatch (${stagedDailyDispatches.length})`)}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                     );
                   })()}
                 </div>
@@ -7498,13 +8696,13 @@ async function handleDeleteSelected() {
               {isFormOpen &&
                 !(
                   activeSection === "dailyDispatch" &&
-                  !editingRecord &&
                   (!(formValues.type || dailyDispatchType) ||
                     (formValues.type || dailyDispatchType) === "Job work")
                 ) && (
                 <form
                   className="record-form"
                   key={`${activeSection}-${editingRecord?.id ?? "new"}`}
+                  onKeyDown={handleFormKeyDown}
                   onSubmit={(event) => {
                     event.preventDefault();
                     if (activeSection === "products") {
@@ -7581,6 +8779,8 @@ async function handleDeleteSelected() {
                         weldedElementName: weName,
                         rawMaterials: rms,
                       });
+                    } else if (activeSection === "dailyInputs" || activeSection === "dailyDispatch") {
+                      triggerFormSaveWithConfirmation();
                     } else {
                       submitForm(false);
                     }
@@ -8058,6 +9258,200 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                                 hasError={Boolean(pageError && (!formValues.supplier_id && !editingRecord?.supplier_id))}
                                 required={isFieldRequired}
                               />
+                            </div>
+                          );
+                        }
+
+                        if (field.type === "rejectionDetails") {
+                          const currentDefects = Array.isArray(formValues.defects)
+                            ? formValues.defects
+                            : [];
+
+                          const handleDefectRowChange = (index, key, val) => {
+                            let cleanVal = val;
+                            if (key === "reject" || key === "rework") {
+                              cleanVal = String(val).replace(/[^\d]/g, "");
+                            }
+                            const updated = currentDefects.map((d, i) => (i === index ? { ...d, [key]: cleanVal } : d));
+                            const totalRej = Math.round(updated.reduce((acc, d) => {
+                              const v = parseInt(d.reject, 10);
+                              return acc + (!isNaN(v) ? v : 0);
+                            }, 0));
+                            const totalRew = Math.round(updated.reduce((acc, d) => {
+                              const v = parseInt(d.rework, 10);
+                              return acc + (!isNaN(v) ? v : 0);
+                            }, 0));
+                            setFormValues((prev) => ({
+                              ...prev,
+                              defects: updated,
+                              reject: totalRej,
+                              ...(totalRew > 0 ? { rework: totalRew } : {}),
+                              defect_type: updated.length > 0 ? updated[0].defect_type : "",
+                              defect_other: updated.length > 0 ? updated[0].defect_other : "",
+                            }));
+                          };
+
+                          const handleAddDefectRow = () => {
+                            const updated = [
+                              ...currentDefects,
+                              { defect_type: "air bubble", defect_other: "", rework: "", reject: "" },
+                            ];
+                            setFormValues((prev) => ({
+                              ...prev,
+                              defects: updated,
+                            }));
+                          };
+
+                          const handleRemoveDefectRow = (index) => {
+                            const updated = currentDefects.filter((_, i) => i !== index);
+                            const totalRej = Math.round(updated.reduce((acc, d) => {
+                              const v = parseInt(d.reject, 10);
+                              return acc + (!isNaN(v) ? v : 0);
+                            }, 0));
+                            const totalRew = Math.round(updated.reduce((acc, d) => {
+                              const v = parseInt(d.rework, 10);
+                              return acc + (!isNaN(v) ? v : 0);
+                            }, 0));
+                            setFormValues((prev) => ({
+                              ...prev,
+                              defects: updated,
+                              reject: totalRej,
+                              ...(totalRew > 0 ? { rework: totalRew } : {}),
+                              defect_type: updated.length > 0 ? updated[0].defect_type : "",
+                              defect_other: updated.length > 0 ? updated[0].defect_other : "",
+                            }));
+                          };
+
+                          const totalReject = Math.round(currentDefects.reduce((acc, d) => {
+                            const v = parseInt(d.reject, 10);
+                            return acc + (!isNaN(v) ? v : 0);
+                          }, 0));
+
+                          return (
+                            <div className="form-field-group field-wide form-rejection-details-wrap" key={field.name}>
+                              <div className="form-rejection-header">
+                                <label className="field-label-text" style={{ fontWeight: 600 }}>
+                                  Rejection Details (Defects Breakdown)
+                                </label>
+                                <button
+                                  type="button"
+                                  className="rejection-add-btn"
+                                  onClick={handleAddDefectRow}
+                                  disabled={isSaving}
+                                >
+                                  + Add Defect
+                                </button>
+                              </div>
+
+                              {currentDefects.length === 0 ? (
+                                <div className="form-rejection-empty">
+                                  <span>No defects added. Click "+ Add Defect" to record defect types, rework, and reject.</span>
+                                </div>
+                              ) : (
+                                <table className="rejection-defects-table">
+                                  <thead>
+                                    <tr>
+                                      <th style={{ width: "35px" }}>#</th>
+                                      <th style={{ width: "220px" }}>Defect Type</th>
+                                      <th>Other Defect Name</th>
+                                      <th style={{ width: "110px", textAlign: "right" }}>Rework</th>
+                                      <th style={{ width: "110px", textAlign: "right" }}>Reject</th>
+                                      <th style={{ width: "40px", textAlign: "center" }}></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {currentDefects.map((d, dIdx) => (
+                                      <tr key={dIdx}>
+                                        <td style={{ color: "#64748b", fontWeight: 600 }}>{dIdx + 1}</td>
+                                        <td>
+                                          <select
+                                            className="rejection-select"
+                                            value={d.defect_type || "air bubble"}
+                                            onChange={(e) => handleDefectRowChange(dIdx, "defect_type", e.target.value)}
+                                            disabled={isSaving}
+                                          >
+                                            {DEFECT_OPTIONS.map((opt) => (
+                                              <option key={opt} value={opt}>
+                                                {opt}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                        <td>
+                                          {d.defect_type === "other" ? (
+                                            <input
+                                              type="text"
+                                              className="rejection-input"
+                                              placeholder="Enter defect name..."
+                                              value={d.defect_other || ""}
+                                              onChange={(e) => handleDefectRowChange(dIdx, "defect_other", e.target.value)}
+                                              disabled={isSaving}
+                                            />
+                                          ) : (
+                                            <span style={{ color: "#94a3b8", fontSize: "11px", fontStyle: "italic" }}>
+                                              (Select "other" to specify)
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            className="rejection-input numeric"
+                                            placeholder="0"
+                                            value={d.rework ?? ""}
+                                            onChange={(e) => {
+                                              const v = e.target.value.replace(/[^\d]/g, "");
+                                              handleDefectRowChange(dIdx, "rework", v);
+                                            }}
+                                            disabled={isSaving}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            className="rejection-input numeric"
+                                            placeholder="0"
+                                            value={d.reject ?? ""}
+                                            onChange={(e) => {
+                                              const v = e.target.value.replace(/[^\d]/g, "");
+                                              handleDefectRowChange(dIdx, "reject", v);
+                                            }}
+                                            disabled={isSaving}
+                                          />
+                                        </td>
+                                        <td style={{ textAlign: "center" }}>
+                                          <button
+                                            type="button"
+                                            className="dispatch-remove-btn"
+                                            onClick={() => handleRemoveDefectRow(dIdx)}
+                                            disabled={isSaving}
+                                            title="Remove defect"
+                                          >
+                                            ✕
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+
+                              {currentDefects.length > 0 && (
+                                <div className="rejection-summary-bar" style={{ marginTop: "8px" }}>
+                                  <div className="rejection-summary-item">
+                                    <span className="rejection-summary-label">Total Defects</span>
+                                    <span className="rejection-summary-value">{currentDefects.length}</span>
+                                  </div>
+                                  <div className="rejection-summary-item">
+                                    <span className="rejection-summary-label">Total Reject (Addition)</span>
+                                    <span className="rejection-summary-value highlight">{totalReject}</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -10170,6 +11564,19 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                 </div>
               )}
 
+              {saveConfirmModal && (
+                <FieldsReviewConfirmModal
+                  isOpen={Boolean(saveConfirmModal)}
+                  title={saveConfirmModal.title}
+                  fields={saveConfirmModal.fields}
+                  multiItems={saveConfirmModal.multiItems}
+                  multiItemsType={saveConfirmModal.multiItemsType}
+                  onConfirm={saveConfirmModal.onConfirm}
+                  onClose={() => setSaveConfirmModal(null)}
+                  isSaving={isSaving}
+                />
+              )}
+
               {quickAddRawMaterialModal && (
                 <div
                   aria-labelledby="quick-rm-title"
@@ -11363,9 +12770,17 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
             })
           )
         : activeConfig.columns
-      ).map(([, label]) => (
-        <th key={label}>{label}</th>
-      ))}
+      ).map(([key, label]) => {
+        const isRejDetails = key === "rejection_details";
+        return (
+          <th
+            key={key || label}
+            className={isRejDetails ? "rejection-details-header" : ""}
+          >
+            {label}
+          </th>
+        );
+      })}
 
       <th className="actions-heading">Actions</th>
     </tr>
@@ -11402,6 +12817,25 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                               (formatted === "-" || formatted === "—")
                                 ? ""
                                 : formatted;
+                            if (key === "rejection_details") {
+                              const text = String(displayCell || "").trim();
+                              if (!text || text === "-" || text === "—") {
+                                return (
+                                  <td key={key} className="rejection-details-cell">
+                                    —
+                                  </td>
+                                );
+                              }
+                              const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+                              return (
+                                <td key={key} className="rejection-details-cell" title={typeof cellValue === "string" ? cellValue : undefined}>
+                                  <div className="rejection-details-stack">
+                                    {lines.map((line, lIdx) => renderRejectionDetailItem(line, lIdx))}
+                                  </div>
+                                </td>
+                              );
+                            }
+
                             return (
                               <td key={key} title={typeof cellValue === "string" ? cellValue : undefined}>
                                 {displayCell}
@@ -11701,7 +13135,62 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                                   }
 
                                   if (activeSection === "dailyDispatch") {
+                                    const linkedInput = record.daily_input_id
+                                      ? (lookupOptions.dailyInputs || []).find((di) => String(di.id) === String(record.daily_input_id))
+                                      : null;
+
+                                    const poVal = record.po_batch_no ?? linkedInput?.po_batch_no ?? linkedInput?.other_details?.po_batch_no ?? "";
+                                    const itemVal = record.item ?? linkedInput?.item ?? "";
+                                    const sachVal = record.sach_code ?? linkedInput?.sach_code ?? linkedInput?.other_details?.sach_code ?? "";
+                                    const recvQty = record.quantity ?? linkedInput?.quantity ?? "";
+                                    const dcNo = record.DC_no ?? record.dc_no ?? linkedInput?.DC_no ?? linkedInput?.dc_no ?? "";
+                                    const dcDate = record.DC_date ?? record.dc_date ?? linkedInput?.DC_date ?? linkedInput?.dc_date ?? "";
+                                    const billNo = record.bill_no ?? linkedInput?.bill_no ?? "";
+                                    const billDate = record.bill_date ?? linkedInput?.bill_date ?? "";
+                                    const zachVal = record.zach_code ?? linkedInput?.zach_code ?? linkedInput?.other_details?.zach_code ?? "";
+                                    const lsVal = record.ls ?? linkedInput?.ls ?? linkedInput?.other_details?.ls ?? "";
+                                    const unitVal = record.unit ?? linkedInput?.unit ?? "num";
+                                    const hsnVal = record.hsn_code ?? linkedInput?.hsn_code ?? "";
+                                    const outBoxes = record.boxes ?? record.other_details?.out_boxes ?? "";
+                                    const outBins = record.bin ?? record.other_details?.out_bins ?? "";
+
+                                    const initialRow = {
+                                      id: record.id,
+                                      type: record.type || "Job work",
+                                      daily_input_id: record.daily_input_id || null,
+                                      product_id: record.product_id || null,
+                                      supplier_id: record.supplier_id || null,
+                                      DC_no: dcNo,
+                                      DC_date: dcDate,
+                                      bill_no: billNo,
+                                      bill_date: billDate,
+                                      item: itemVal,
+                                      zach_code: zachVal,
+                                      po_batch_no: poVal,
+                                      sach_code: sachVal,
+                                      ls: lsVal,
+                                      quantity: recvQty !== null && recvQty !== undefined && recvQty !== "" ? Math.round(Number(recvQty)) : "",
+                                      unit: unitVal,
+                                      hsn_code: hsnVal,
+                                      total_amount: record.total_amount ?? 0,
+                                      remarks: record.remarks ?? "",
+                                      out_quantity: record.out_quantity !== null && record.out_quantity !== undefined && record.out_quantity !== "" ? Math.round(Number(record.out_quantity)) : "",
+                                      out_boxes: outBoxes,
+                                      out_bins: outBins,
+                                      ok: record.ok !== null && record.ok !== undefined && record.ok !== "" ? Math.round(Number(record.ok)) : "",
+                                      rework: record.rework !== null && record.rework !== undefined && record.rework !== "" ? Math.round(Number(record.rework)) : "",
+                                      reject: record.reject !== null && record.reject !== undefined && record.reject !== "" ? Math.round(Number(record.reject)) : "",
+                                      defects: Array.isArray(record.defects) && record.defects.length > 0
+                                        ? record.defects.map((d) => ({ ...d }))
+                                        : (record.defect_type
+                                            ? [{ defect_type: record.defect_type, defect_other: record.defect_other || "", rework: record.rework ?? "", reject: record.reject ?? "" }]
+                                            : []),
+                                      isAdded: false,
+                                    };
+                                    setStagedDailyDispatches([initialRow]);
                                     setDailyDispatchType(record.type || "Job work");
+                                    setCommonOutDcNo(record.out_dc_no || "");
+                                    setCommonOutDcDate(record.out_dc_date ? String(record.out_dc_date).split("T")[0] : new Date().toISOString().split("T")[0]);
                                   }
 
                                   setFormValues(editValues);
@@ -12242,8 +13731,12 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                               {csvPreview.columnLabels.map((label, colIndex) => {
                                 const key = csvPreview.columnKeys?.[colIndex];
                                 const isNum = isNumericColumn(key);
+                                const isRejDetails = key === "rejection_details";
                                 return (
-                                  <th key={label} className={isNum ? "num-col" : ""}>
+                                  <th
+                                    key={label}
+                                    className={`${isNum ? "num-col" : ""} ${isRejDetails ? "rejection-details-header" : ""}`}
+                                  >
                                     {label}
                                   </th>
                                 );
@@ -12256,12 +13749,23 @@ if (field.type === "dailyInputRawMaterialPicker" || field.type === "dailyInputIt
                                 {row.map((cell, cellIndex) => {
                                   const key = csvPreview.columnKeys?.[cellIndex];
                                   const isNum = isNumericColumn(key);
+                                  const isRejDetails = key === "rejection_details";
+                                  const cellStr = String(cell || "").trim();
+                                  let cellContent = cell || "—";
+                                  if (isRejDetails && cellStr && cellStr !== "—" && cellStr !== "-") {
+                                    const lines = cellStr.split("\n").map((l) => l.trim()).filter(Boolean);
+                                    cellContent = (
+                                      <div className="rejection-details-stack">
+                                        {lines.map((line, lIdx) => renderRejectionDetailItem(line, lIdx))}
+                                      </div>
+                                    );
+                                  }
                                   return (
                                     <td
                                       key={`csv-cell-${rowIndex}-${cellIndex}`}
-                                      className={isNum ? "num-col" : ""}
+                                      className={`${isNum ? "num-col" : ""} ${isRejDetails ? "rejection-details-cell" : ""}`}
                                     >
-                                      {cell || "—"}
+                                      {cellContent}
                                     </td>
                                   );
                                 })}
@@ -12322,7 +13826,7 @@ function Dashboard({
   user,
 }) {
   const kpiCards = navigationItems
-    .filter((section) => section.id !== "dashboard" && sections[section.id])
+    .filter((section) => !DASHBOARD_EXCLUDED_SECTIONS.has(section.id) && sections[section.id])
     .map((section) => ({
       ...section,
       count: counts[section.id] ?? 0,
@@ -12391,6 +13895,19 @@ function Dashboard({
 
 function formatCell(value, key = "") {
   if (value === null || value === undefined || value === "") return "—";
+  if (key === "rejection_percent" || key === "rework_percent") {
+    if (typeof value === "string" && value.includes("%")) return value;
+    const num = Number(value);
+    if (!isNaN(num)) {
+      const rounded = Math.round(num * 100) / 100;
+      return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(2)}%`;
+    }
+    return String(value);
+  }
+  if (key === "out_quantity" || key === "reject" || key === "rework" || key === "ok") {
+    const num = Number(value);
+    if (!isNaN(num)) return String(Math.round(num));
+  }
   if (Array.isArray(value)) {
     return (
       value

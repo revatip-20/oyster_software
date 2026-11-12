@@ -47,5 +47,5 @@ app.include_router(stock_balance_router)
 
 
 @app.get("/")
-async def root():
+def root():
     return {"message": "Backend is running"}

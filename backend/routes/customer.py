@@ -16,9 +16,9 @@ router = APIRouter(tags=["customers"])
 @router.get(
     "/get-customers",
     response_model=list[CustomerRead],
-    dependencies=[Depends(require_roles("admin", "supervisor"))],
+    dependencies=[Depends(require_roles("admin", "supervisor", "employee"))],
 )
-async def get_customers(db: Session = Depends(get_db)):
+def get_customers(db: Session = Depends(get_db)):
     return db.scalars(
         select(Customer)
         .where(Customer.deleted_at.is_(None))
@@ -32,7 +32,7 @@ async def get_customers(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
+def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     data = customer.model_dump()
     code = get_next_resource_code(db, Customer, Customer.code, "CUST")
     new_customer = Customer(code=code, **data)
@@ -51,7 +51,7 @@ async def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     response_model=CustomerRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depends(get_db)):
+def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = Depends(get_db)):
     customer = db.query(Customer).filter(
         Customer.id == customer_id,
         Customer.deleted_at.is_(None),
@@ -80,7 +80,7 @@ async def edit_customer(customer_id: int, update: CustomerUpdate, db: Session = 
     response_model=CustomerRead,
     dependencies=[Depends(require_roles("admin", "supervisor"))],
 )
-async def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     customer = db.query(Customer).filter(
         Customer.id == customer_id,
         Customer.deleted_at.is_(None),

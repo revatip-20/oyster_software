@@ -8,10 +8,17 @@ from models.daily_dispatch import DailyDispatch
 from models.consumption import Consumption, ConsumptionRawMaterial
 
 
-def get_product_bom_raw_materials(product_id: int, db: Session, visited: set | None = None) -> dict[int, float]:
+def get_product_bom_raw_materials(
+    product_id: int,
+    db: Session,
+    visited: set | None = None,
+    prod_lookup: dict[int, Product] | None = None,
+    prms_by_product: dict[int, list[ProductRawMaterial]] | None = None,
+) -> dict[int, float]:
     """
     Returns a dictionary mapping raw_material_id -> required_qty_per_unit_of_product,
     recursing through welded_element and element sub-components.
+    Optional in-memory lookups (prod_lookup, prms_by_product) prevent N+1 queries.
     """
     if visited is None:
         visited = set()
@@ -19,14 +26,21 @@ def get_product_bom_raw_materials(product_id: int, db: Session, visited: set | N
         return {}
     visited.add(product_id)
 
-    prod = db.query(Product).filter(Product.id == product_id, Product.deleted_at.is_(None)).first()
+    if prod_lookup is not None:
+        prod = prod_lookup.get(product_id)
+    else:
+        prod = db.query(Product).filter(Product.id == product_id, Product.deleted_at.is_(None)).first()
     if not prod:
         return {}
 
     rm_map: dict[int, float] = {}
 
     # 1. Direct raw materials configured on this product
-    direct_prms = db.query(ProductRawMaterial).filter(ProductRawMaterial.product_id == prod.id).all()
+    if prms_by_product is not None:
+        direct_prms = prms_by_product.get(prod.id, [])
+    else:
+        direct_prms = db.query(ProductRawMaterial).filter(ProductRawMaterial.product_id == prod.id).all()
+
     if direct_prms:
         for prm in direct_prms:
             qty = float(prm.quantity or 1.0)
@@ -43,13 +57,17 @@ def get_product_bom_raw_materials(product_id: int, db: Session, visited: set | N
 
     # 2. Check welded_element component (for capacitor)
     if prod.welded_element_id and prod.welded_element_id not in visited:
-        welded_map = get_product_bom_raw_materials(prod.welded_element_id, db, visited)
+        welded_map = get_product_bom_raw_materials(
+            prod.welded_element_id, db, visited, prod_lookup, prms_by_product
+        )
         for rm_id, qty in welded_map.items():
             rm_map[rm_id] = rm_map.get(rm_id, 0.0) + qty
 
     # 3. Check element component (for welded element or capacitor)
     if prod.element_id and prod.element_id not in visited:
-        element_map = get_product_bom_raw_materials(prod.element_id, db, visited)
+        element_map = get_product_bom_raw_materials(
+            prod.element_id, db, visited, prod_lookup, prms_by_product
+        )
         for rm_id, qty in element_map.items():
             rm_map[rm_id] = rm_map.get(rm_id, 0.0) + qty
 
